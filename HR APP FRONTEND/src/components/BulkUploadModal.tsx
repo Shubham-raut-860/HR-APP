@@ -65,6 +65,7 @@ import {
 }                        from "lucide-react";
 import { cn }            from "@/lib/utils";
 import api               from "@/services/api";
+import { getJobs }       from "@/services/jobs";
 import { toast }         from "sonner";
 import { FileRow, FileStatus, TrackedFile } from "@/components/bulk-upload/FileRow";
 
@@ -106,7 +107,11 @@ interface BatchResult {
   skipped_duplicates?: { filename: string; reason: string; file_id?: string }[];
 }
 
-interface Job { id: string; title: string; }
+interface Job {
+  id: string;
+  title: string;
+  is_active?: boolean;
+}
 
 interface BulkUploadModalProps {
   jobs: Job[];
@@ -176,6 +181,7 @@ export function BulkUploadModal({ jobs, onUploadComplete, trigger }: BulkUploadM
   const [isOpen,        setIsOpen       ] = useState(false);
   const [isMinimized,   setIsMinimized  ] = useState(false);
   const [selectedJob,   setSelectedJob  ] = useState("");
+  const [runtimeJobs,   setRuntimeJobs  ] = useState<Job[]>(jobs);
   const [trackedFiles,  setTrackedFiles ] = useState<TrackedFile[]>([]);
   const [isDragging,    setIsDragging   ] = useState(false);
   const [isUploading,   setIsUploading  ] = useState(false);
@@ -196,6 +202,27 @@ export function BulkUploadModal({ jobs, onUploadComplete, trigger }: BulkUploadM
   }, []);
 
   const isPoolUpload = selectedJob === POOL_VALUE;
+
+  useEffect(() => {
+    setRuntimeJobs(jobs);
+  }, [jobs]);
+
+  useEffect(() => {
+    if (!isOpen || isUploading) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const allJobs = await getJobs(false);
+        if (cancelled) return;
+        const normalized = Array.isArray(allJobs) ? allJobs : [];
+        const active = normalized.filter((job: Job) => job?.is_active !== false);
+        setRuntimeJobs(active.length > 0 ? active : normalized);
+      } catch {
+        // Keep existing jobs snapshot from parent props.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen, isUploading]);
 
   // ── Derived counts ──────────────────────────────────────────────────────────
   const doneCount      = useMemo(() => trackedFiles.filter(f => f.status === "done").length,      [trackedFiles]);
@@ -439,7 +466,7 @@ export function BulkUploadModal({ jobs, onUploadComplete, trigger }: BulkUploadM
   const canUpload        = !!selectedJob && idleCount > 0 && !isUploading;
   const selectedJobTitle = isPoolUpload
     ? "General Pool"
-    : jobs.find(j => j.id === selectedJob)?.title ?? "";
+    : runtimeJobs.find(j => j.id === selectedJob)?.title ?? "";
 
   const batchInfo = useMemo(() => {
     const totalBatches = Math.ceil(total / BATCH_SIZE);
@@ -493,9 +520,9 @@ export function BulkUploadModal({ jobs, onUploadComplete, trigger }: BulkUploadM
       </button>
     )}
 
-    <Dialog
-      open={isOpen}
-      onOpenChange={open => {
+      <Dialog
+        open={isOpen}
+        onOpenChange={open => {
         if (open) {
           handleReopen();
           return;
@@ -506,9 +533,10 @@ export function BulkUploadModal({ jobs, onUploadComplete, trigger }: BulkUploadM
         }
         handleClose();
       }}
-    >
+      >
       <DialogContent
-        className="sm:max-w-[540px] p-0 gap-0 overflow-hidden flex flex-col max-h-[90vh] [&>button]:hidden"
+        hideDefaultCloseButton
+        className="sm:max-w-[540px] p-0 gap-0 overflow-hidden flex flex-col max-h-[90vh]"
         onInteractOutside={e => { if (isUploading) e.preventDefault(); }}
       >
         {/* ── Header ──────────────────────────────────────────────────── */}
@@ -629,7 +657,7 @@ export function BulkUploadModal({ jobs, onUploadComplete, trigger }: BulkUploadM
                       General Pool — no scoring
                     </span>
                   </SelectItem>
-                  {jobs.length > 0 && (
+                  {runtimeJobs.length > 0 && (
                     <div className="relative my-2 mx-1">
                       <div className="border-t-2 border-dashed border-muted-foreground/20" />
                       <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2
@@ -638,7 +666,7 @@ export function BulkUploadModal({ jobs, onUploadComplete, trigger }: BulkUploadM
                       </span>
                     </div>
                   )}
-                  {jobs.map(job => (
+                  {runtimeJobs.map(job => (
                     <SelectItem key={job.id} value={job.id}>
                       <span className="flex items-center gap-2">
                         <Briefcase className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -646,7 +674,7 @@ export function BulkUploadModal({ jobs, onUploadComplete, trigger }: BulkUploadM
                       </span>
                     </SelectItem>
                   ))}
-                  {jobs.length === 0 && (
+                  {runtimeJobs.length === 0 && (
                     <div className="px-3 py-2 text-xs text-muted-foreground italic">No active jobs yet</div>
                   )}
                 </SelectContent>

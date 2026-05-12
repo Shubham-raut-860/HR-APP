@@ -405,13 +405,14 @@ export function CandidateIntelligencePanel({
         <div className="px-4 py-2 border-t bg-muted/20 flex items-center justify-between">
           <span className="text-[11px] text-muted-foreground">Showing top 6 of {candidates.length}</span>
           <button
+            type="button"
             className="text-[11px] text-primary hover:underline flex items-center gap-1"
             onClick={() => {
               if (onViewAllShortlist) {
                 onViewAllShortlist();
-                return;
+              } else {
+                navigate('#shortlist');
               }
-              navigate('#shortlist');
             }}
           >
             View all in Shortlist tab <ChevronRight className="h-3 w-3" />
