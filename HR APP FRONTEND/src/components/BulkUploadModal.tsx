@@ -427,6 +427,14 @@ export function BulkUploadModal({ jobs, onUploadComplete, trigger }: BulkUploadM
     setIsOpen(true);
   }, []);
 
+  const handleHeaderClose = useCallback(() => {
+    if (isUploading) {
+      handleMinimize();
+      return;
+    }
+    handleClose();
+  }, [isUploading, handleMinimize, handleClose]);
+
   // ── Computed UI ─────────────────────────────────────────────────────────────
   const canUpload        = !!selectedJob && idleCount > 0 && !isUploading;
   const selectedJobTitle = isPoolUpload
@@ -460,7 +468,12 @@ export function BulkUploadModal({ jobs, onUploadComplete, trigger }: BulkUploadM
   return (
     <>
       {trigger
-        ? React.cloneElement(trigger, { onClick: handleReopen })
+        ? React.cloneElement(trigger, {
+          onClick: (e: React.MouseEvent) => {
+            trigger.props.onClick?.(e);
+            handleReopen();
+          }
+        })
         : (
           <Button onClick={handleReopen}>
             <Upload className="h-4 w-4" /> Bulk Upload Resumes
@@ -495,7 +508,7 @@ export function BulkUploadModal({ jobs, onUploadComplete, trigger }: BulkUploadM
       }}
     >
       <DialogContent
-        className="sm:max-w-[540px] p-0 gap-0 overflow-hidden flex flex-col max-h-[90vh]"
+        className="sm:max-w-[540px] p-0 gap-0 overflow-hidden flex flex-col max-h-[90vh] [&>button]:hidden"
         onInteractOutside={e => { if (isUploading) e.preventDefault(); }}
       >
         {/* ── Header ──────────────────────────────────────────────────── */}
@@ -516,18 +529,30 @@ export function BulkUploadModal({ jobs, onUploadComplete, trigger }: BulkUploadM
                 </p>
               </div>
             </div>
-            {isUploading && (
+            <div className="flex items-center gap-1 shrink-0">
+              {isUploading && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleMinimize}
+                  className="h-8 w-8"
+                  title="Minimize"
+                  aria-label="Minimize upload dialog"
+                >
+                  <Minimize2 className="h-4 w-4" />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={handleMinimize}
+                onClick={handleHeaderClose}
                 className="h-8 w-8"
-                title="Minimize"
-                aria-label="Minimize upload dialog"
+                title={isUploading ? "Minimize upload dialog" : "Close upload dialog"}
+                aria-label={isUploading ? "Minimize upload dialog" : "Close upload dialog"}
               >
-                <Minimize2 className="h-4 w-4" />
+                <X className="h-4 w-4" />
               </Button>
-            )}
+            </div>
           </div>
         </DialogHeader>
 

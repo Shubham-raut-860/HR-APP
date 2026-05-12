@@ -7,7 +7,8 @@ Thumbs.db
 # Secrets/env
 .env
 .env.*
-!.env.example
+.env.example
+.env.examples
 
 # Python
 __pycache__/

@@ -869,8 +869,8 @@ export default function JobDetails() {
         <StatCard icon={BrainCircuit} label="Quiz Taken" value={testedCount}
           sub={`${shortlistedCount ? Math.round(testedCount / (shortlistedCount || 1) * 100) : 0}% of shortlisted`}
           color="text-blue-600" />
-        <StatCard icon={Trophy} label="Passed" value={summary.pass_count ?? 0}
-          sub={`${summary.avg_final_score ? `Avg ${summary.avg_final_score.toFixed(1)}%` : "No final scores yet"}`}
+        <StatCard icon={Trophy} label="Passed" value={summary?.pass_count ?? 0}
+          sub={`${summary?.avg_final_score ? `Avg ${summary.avg_final_score.toFixed(1)}%` : "No final scores yet"}`}
           color="text-amber-600" />
       </div>
 
@@ -915,7 +915,7 @@ export default function JobDetails() {
                     isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
                   )}
                   onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
-                  onClick={() => document.getElementById('file-upload-jd').click()}
+                  onClick={() => document.getElementById('file-upload-jd')?.click()}
                 >
                   <input id="file-upload-jd" type="file" multiple className="hidden" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp,.tiff,.tif,.bmp,.gif" onChange={handleFileChange} />
                   <div className="flex flex-col items-center gap-3">
@@ -932,8 +932,8 @@ export default function JobDetails() {
                 {files.length > 0 && (() => {
 
                   const totalParsed = Object.values(fileStatuses).filter(s => s === 'done').length;
-                  const progressProcessed = bulkProgress.processed ?? Object.values(fileStatuses).filter(s => s !== 'ready' && s !== 'uploading').length;
-                  const progressTotal = bulkProgress.total ?? files.length;
+                  const progressProcessed = bulkProgress?.processed ?? Object.values(fileStatuses).filter(s => s !== 'ready' && s !== 'uploading').length;
+                  const progressTotal = bulkProgress?.total ?? files.length;
                   const progressPct = progressTotal > 0 ? Math.min(100, Math.round((progressProcessed / progressTotal) * 100)) : 0;
 
                   return (
@@ -1250,7 +1250,7 @@ export default function JobDetails() {
                           ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/10"
                           : "border-border hover:border-primary/50 hover:bg-muted/30"
                     )}
-                    onClick={() => document.getElementById('quiz-file-input').click()}
+                    onClick={() => document.getElementById('quiz-file-input')?.click()}
                   >
                     <input
                       id="quiz-file-input"
@@ -1844,6 +1844,3 @@ export default function JobDetails() {
     </div>
   );
 }
-
-
-

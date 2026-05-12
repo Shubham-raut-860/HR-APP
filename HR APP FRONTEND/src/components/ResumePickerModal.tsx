@@ -161,15 +161,18 @@ export default function ResumePickerModal({
   const handleDelete = async (id: string) => {
     try {
       await deleteStoredResume(id);
-      setResumes(prev => { 
-        const rem = prev.filter(r => r.id !== id); 
-        if (rem.length > 0 && prev.find(r => r.id === id).is_default) {
-          rem[0].is_default = true;
+      setResumes(prev => {
+        const deleted = prev.find(r => r.id === id);
+        const rem = prev.filter(r => r.id !== id);
+        if (rem.length > 0 && deleted?.is_default) {
+          rem[0] = { ...rem[0], is_default: true };
         }
-        return rem; 
+        if (selected === id) {
+          setSelected(rem[0]?.id ?? null);
+        }
+        return rem;
       });
       setFitScores(prev => { const n = { ...prev }; delete n[id]; return n; });
-      if (selected === id) setSelected(resumes.find(r => r.id !== id).id || null);
       toast.success("Resume removed");
       invalidateResumes().catch(() => {});
     } catch { toast.error("Failed to delete resume"); }
@@ -376,7 +379,7 @@ export default function ResumePickerModal({
                           <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setShowUploadArea(false)}><X className="h-3.5 w-3.5" /></Button>
                         </div>
                         <Input placeholder="Label (e.g. Senior Backend Dev)" value={newLabel} onChange={e => setNewLabel(e.target.value)} className="text-sm h-9" />
-  <Button type="button" variant="ghost" aria-label="Upload resume file" onDragOver={e => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }} onClick={() => fileRef.current.click()} className={cn("w-full h-auto border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all", dragOver ? "border-primary bg-primary/10" : "border-border/50 hover:border-primary/50 hover:bg-muted/30")}>
+  <Button type="button" variant="ghost" aria-label="Upload resume file" onDragOver={e => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }} onClick={() => fileRef.current?.click()} className={cn("w-full h-auto border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all", dragOver ? "border-primary bg-primary/10" : "border-border/50 hover:border-primary/50 hover:bg-muted/30")}>
                           <Input ref={fileRef} type="file" className="hidden" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp,.tiff,.tif,.bmp,.gif" onChange={e => handleFiles(e.target.files)} />{uploadingNew ? (
                             <div className="space-y-3"><Loader2 className="h-6 w-6 animate-spin text-primary mx-auto" /><p className="text-xs text-muted-foreground">Uploading & encrypting</p><Progress value={uploadProgress} className="h-1.5" /></div>
   ) : (
@@ -464,7 +467,7 @@ export default function ResumePickerModal({
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Resume</AlertDialogTitle>
             <AlertDialogDescription>
-              Remove "{deleteConfirm.label}" from your vault This cannot be undone.
+              Remove "{deleteConfirm?.label ?? "this resume"}" from your vault. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

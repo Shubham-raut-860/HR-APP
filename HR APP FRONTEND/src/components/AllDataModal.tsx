@@ -66,6 +66,7 @@ export function AllDataModal({ open, onOpenChange, jobs }: AllDataModalProps) {
   const [loading, setLoading]             = useState(false);
   const [searchQuery, setSearchQuery]     = useState("");
   const [page, setPage]                   = useState(0);
+  const [archiveMenuOpen, setArchiveMenuOpen] = useState(false);
 
   // Selection state
   const [selected, setSelected]           = useState<Set<string>>(new Set());
@@ -96,6 +97,7 @@ export function AllDataModal({ open, onOpenChange, jobs }: AllDataModalProps) {
     if (open) {
       setPage(0);
       fetchData(searchQuery, 0);
+      setArchiveMenuOpen(false);
     }
   }, [open]);
 
@@ -391,19 +393,27 @@ export function AllDataModal({ open, onOpenChange, jobs }: AllDataModalProps) {
                 )}
 
                 {/* Delete menu — archived only & delete all */}
-                <div className="relative group">
+                <div className="relative">
                   <Button
                     variant="outline"
                     size="sm"
                     className="rounded-lg h-8 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 dark:border-red-900 dark:text-red-400"
-                    onClick={() => {}}
+                    onClick={() => setArchiveMenuOpen((prev) => !prev)}
+                    aria-haspopup="menu"
+                    aria-expanded={archiveMenuOpen}
                   >
                     <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Clear Archive ▾
                   </Button>
-                  <div className="absolute right-0 top-full mt-1 w-52 bg-background border rounded-xl shadow-lg z-50 py-1 hidden group-focus-within:block group-hover:block">
+                  <div className={cn(
+                    "absolute right-0 top-full mt-1 w-52 bg-background border rounded-xl shadow-lg z-50 py-1",
+                    archiveMenuOpen ? "block" : "hidden"
+                  )}>
                     <button
                       className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted flex items-center gap-2 text-amber-700 dark:text-amber-400"
-                      onClick={() => setDeleteMode("archived-only")}
+                      onClick={() => {
+                        setArchiveMenuOpen(false);
+                        setDeleteMode("archived-only");
+                      }}
                     >
                       <Archive className="h-3.5 w-3.5" />
                       Delete archived only
@@ -411,7 +421,10 @@ export function AllDataModal({ open, onOpenChange, jobs }: AllDataModalProps) {
                     <div className="border-t my-1" />
                     <button
                       className="w-full text-left px-4 py-2.5 text-sm hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-2 text-red-600 dark:text-red-400 font-medium"
-                      onClick={() => setDeleteMode("all")}
+                      onClick={() => {
+                        setArchiveMenuOpen(false);
+                        setDeleteMode("all");
+                      }}
                     >
                       <ShieldAlert className="h-3.5 w-3.5" />
                       Delete entire archive

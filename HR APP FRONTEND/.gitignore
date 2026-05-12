@@ -7,5 +7,4 @@ coverage/
 .env
 .env.local
 .env*
-!.env.example
 src2/
