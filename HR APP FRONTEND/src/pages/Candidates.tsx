@@ -47,12 +47,24 @@ export default function Candidates() {
     if (loadInFlightRef.current) return;
     loadInFlightRef.current = true;
     try {
-      const [jobsData, candidatesData] = await Promise.all([
-        getJobs(true, signal),
+      const [jobsRes, candidatesRes] = await Promise.allSettled([
+        getJobs(false, signal),
         getCandidates(undefined, undefined, signal)
       ]);
-      setJobs(jobsData);
-      setCandidates(candidatesData);
+
+      if (jobsRes.status === "fulfilled") {
+        const allJobs = Array.isArray(jobsRes.value) ? jobsRes.value : [];
+        const activeJobs = allJobs.filter((job: any) => job?.is_active !== false);
+        setJobs(activeJobs.length > 0 ? activeJobs : allJobs);
+      } else if (!isBackground) {
+        toast.error("Failed to load jobs");
+      }
+
+      if (candidatesRes.status === "fulfilled") {
+        setCandidates(candidatesRes.value);
+      } else if (!isBackground) {
+        toast.error("Failed to load candidates");
+      }
     } catch (error: any) {
       if (error.name === "AbortError" || error.code === "ERR_CANCELED") return;
       if (!isBackground) toast.error("Failed to load data");
@@ -190,7 +202,7 @@ export default function Candidates() {
             jobs={jobs} 
             onUploadComplete={loadData} 
             trigger={
-              <Button>
+              <Button onClick={() => loadData(true)}>
                 <Upload className="mr-2 h-4 w-4" /> Bulk Upload Resume
               </Button>
             }
