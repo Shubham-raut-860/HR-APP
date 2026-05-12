@@ -1,0 +1,36 @@
+version: "2"
+type: frontend
+tech_stack:
+  - Vite
+  - React
+  - TypeScript
+  - Tailwind CSS
+  - Framer Motion
+  - Radix UI
+  - Axios
+  - Lucide React
+features:
+  - name: Authentication
+    description: Login and Signup pages for candidates and HR
+    files:
+      - src/pages/Login.tsx
+      - src/pages/Signup.tsx
+  - name: Candidate Portal
+    description: Dashboard, Job Board, and Application flow for candidates
+    files:
+      - src/pages/CandidateDashboard.tsx
+      - src/pages/CandidateJobBoard.tsx
+      - src/pages/CandidateApply.tsx
+  - name: Quiz Engine
+    description: Interface for taking quizzes and mock tests
+    files:
+      - src/pages/QuizEngine.tsx
+      - src/pages/CandidateMockTest.tsx
+  - name: HR Dashboard
+    description: Management of jobs, candidates, and analytics
+    files:
+      - src/pages/Dashboard.tsx
+      - src/pages/Jobs.tsx
+      - src/pages/Candidates.tsx
+      - src/pages/Analytics.tsx
+known_limitations: []

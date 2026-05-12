@@ -1,0 +1,28 @@
+﻿
+> react-example@0.0.0 lint
+> tsc --noEmit
+
+src2/components/AllDataModal.tsx(321,50): error TS2345: Argument of type 'unknown[]' is not assignable to parameter of type 'string[]'.
+  Type 'unknown' is not assignable to type 'string'.
+src2/components/BulkUploadModal.tsx(442,46): error TS2339: Property 'id' does not exist on type 'unknown'.
+src2/components/BulkUploadModal.tsx(446,11): error TS2345: Argument of type 'unknown[]' is not assignable to parameter of type 'TrackedFile[]'.
+  Type '{}' is missing the following properties from type 'TrackedFile': id, file, status, progress
+src2/components/BulkUploadModal.tsx(450,52): error TS2339: Property 'id' does not exist on type 'unknown'.
+src2/components/BulkUploadModal.tsx(473,38): error TS2339: Property 'id' does not exist on type 'unknown'.
+src2/components/BulkUploadModal.tsx(474,35): error TS2339: Property 'id' does not exist on type 'unknown'.
+src2/components/BulkUploadModal.tsx(491,48): error TS2339: Property 'id' does not exist on type 'unknown'.
+src2/components/BulkUploadModal.tsx(880,23): error TS2322: Type '{ key: any; tf: any; onRemove: any; isUploading: any; }' is not assignable to type '{ tf: TrackedFile; onRemove: (id: string) => void; isUploading: boolean; }'.
+  Property 'key' does not exist on type '{ tf: TrackedFile; onRemove: (id: string) => void; isUploading: boolean; }'.
+src2/components/NotificationBell.tsx(323,26): error TS2322: Type '{ key: any; notif: any; onRead: (id: string) => Promise<void>; onDismiss: (id: string) => Promise<void>; }' is not assignable to type '{ notif: Notification; onRead: (id: string) => void; onDismiss: (id: string) => void; }'.
+  Property 'key' does not exist on type '{ notif: Notification; onRead: (id: string) => void; onDismiss: (id: string) => void; }'.
+src2/components/ui/skeleton.tsx(3,44): error TS2503: Cannot find namespace 'React'.
+src2/pages/Analytics.tsx(65,9): error TS2503: Cannot find namespace 'React'.
+src2/pages/Analytics.tsx(269,46): error TS2503: Cannot find namespace 'React'.
+src2/pages/CandidateApply.tsx(365,42): error TS2322: Type '{ key: any; gap: any; index: any; onChange: (i: number, updated: Partial<CareerBreak>) => void; }' is not assignable to type '{ gap: CareerBreak; index: number; onChange: (i: number, updated: Partial<CareerBreak>) => void; }'.
+  Property 'key' does not exist on type '{ gap: CareerBreak; index: number; onChange: (i: number, updated: Partial<CareerBreak>) => void; }'.
+src2/pages/CandidateDetails.tsx(89,9): error TS2503: Cannot find namespace 'React'.
+src2/pages/CandidateDetails.tsx(89,51): error TS2503: Cannot find namespace 'React'.
+src2/pages/CandidateJobBoard.tsx(86,26): error TS2503: Cannot find namespace 'React'.
+src2/pages/CandidateJobBoard.tsx(96,29): error TS2503: Cannot find namespace 'React'.
+src2/pages/CandidateJobBoard.tsx(114,35): error TS2503: Cannot find namespace 'React'.
+src2/pages/CandidateJobBoard.tsx(114,50): error TS2503: Cannot find namespace 'React'.

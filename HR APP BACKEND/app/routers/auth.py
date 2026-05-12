@@ -1,0 +1,306 @@
+"""
+Auth router  register, login, me, forgot-password, reset-password
+"""
+import html
+import re
+import logging
+from datetime import datetime, timedelta, timezone
+from jose import jwt, JWTError
+from passlib.context import CryptContext
+from pydantic import BaseModel
+
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks, Body
+from fastapi.security import HTTPAuthorizationCredentials
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
+from app.database import get_db
+from app.models import User, UserRole, RefreshToken
+from app.schemas import UserCreate, UserOut, UserUpdate, LoginRequest, Token
+from app.services.auth_service import (
+    hash_password, verify_password,
+    create_access_token, get_current_user,
+    issue_refresh_token, rotate_refresh_token,
+    revoke_refresh_token, revoke_access_jti, decode_token,
+    log_action,
+    bearer_scheme,
+)
+from app.services.email_service import send_email_async
+from app.config import settings
+from app.limiter import limiter, _get_real_ip
+
+router = APIRouter(prefix="/auth", tags=["Authentication"])
+logger = logging.getLogger(__name__)
+
+# ─── Schemas ──────────────────────────────────────────────────────────────────
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str | None = None
+
+# ─── Endpoints ────────────────────────────────────────────────────────────────
+
+
+@router.post("/register", response_model=UserOut, status_code=201)
+@limiter.limit("5/minute")
+async def register(request: Request, body: UserCreate, db: AsyncSession = Depends(get_db)):
+    email = body.email.lower()
+    existing = await db.execute(select(User).where(User.email == email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    user = User(
+        email=email,
+        hashed_password=hash_password(body.password),
+        full_name=body.full_name,
+        # FIX (Bug Audit #3): Use the role from the request body (validated in UserCreate
+        # to only allow 'hr' or 'candidate'). Previously hardcoded to UserRole.hr which
+        # broke candidate self-registration.
+        role=UserRole(body.role),
+        is_active=True,
+    )
+    db.add(user)
+    try:
+        await db.commit()
+    except IntegrityError:
+        # TOCTOU FIX: two concurrent requests passed the SELECT check simultaneously.
+        # The DB unique constraint fires on commit — catch it and return a clean 409.
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Email already registered")
+    await db.refresh(user)
+    return user
+
+
+@router.post("/login", response_model=Token)
+@limiter.limit("10/minute")
+async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
+    body.email = body.email.lower()
+    result = await db.execute(select(User).where(User.email == body.email))
+    user = result.scalar_one_or_none()
+    
+    # Timing Attack Mitigation
+    if not user:
+        verify_password(body.password, "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPI1LWeG6")
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+    if not verify_password(body.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not user.is_active:
+        raise HTTPException(
+            status_code=403, detail="Account has been disabled. Contact your administrator.")
+
+    token = create_access_token({"sub": user.id, "role": user.role})
+    refresh_token = await issue_refresh_token(db, user.id)
+
+    # FIX (Bug #2 - HIGH): Previously used request.client.host which always logs the
+    # reverse-proxy IP, not the real client IP. Use _get_real_ip() to honour
+    # X-Forwarded-For / X-Real-IP headers exactly as the rate limiter does.
+    real_ip = _get_real_ip(request)
+    await log_action(db, user.id, "LOGIN", "auth", ip_address=real_ip)
+    await db.commit()
+    return Token(access_token=token, refresh_token=refresh_token, user=UserOut.model_validate(user))
+
+
+@router.post("/refresh", response_model=Token)
+@limiter.limit("20/minute")
+async def refresh_access_token(
+    request: Request,
+    body: RefreshRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    user_id, new_refresh_token = await rotate_refresh_token(db, body.refresh_token.strip())
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found or inactive")
+    new_access = create_access_token({"sub": user.id, "role": user.role})
+    await log_action(db, user.id, "REFRESH_TOKEN", "auth", ip_address=_get_real_ip(request))
+    await db.commit()
+    return Token(access_token=new_access, refresh_token=new_refresh_token, user=UserOut.model_validate(user))
+
+
+@router.post("/logout")
+@limiter.limit("20/minute")
+async def logout(
+    request: Request,
+    body: LogoutRequest = Body(default=LogoutRequest()),
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    payload = decode_token(credentials.credentials)
+    jti = payload.get("jti")
+    exp = payload.get("exp")
+    if jti and exp:
+        try:
+            exp_dt = datetime.fromtimestamp(float(exp), tz=timezone.utc)
+            await revoke_access_jti(db, jti=str(jti), expires_at=exp_dt, user_id=user.id)
+        except Exception:
+            logger.warning("Could not revoke access token jti for user %s", user.id)
+
+    if body.refresh_token:
+        await revoke_refresh_token(db, body.refresh_token.strip())
+
+    await log_action(db, user.id, "LOGOUT", "auth", ip_address=_get_real_ip(request))
+    await db.commit()
+    return {"message": "Logged out successfully"}
+
+
+@router.post("/forgot-password")
+@limiter.limit("3/minute")
+async def forgot_password(request: Request, body: ForgotPasswordRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    body.email = body.email.lower()
+    result = await db.execute(select(User).where(User.email == body.email))
+    user = result.scalar_one_or_none()
+
+    if user:
+        dynamic_secret = f"{settings.SECRET_KEY}{user.hashed_password}"
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+        to_encode = {"sub": user.email, "exp": expire, "type": "reset"}
+        token = jwt.encode(to_encode, dynamic_secret, algorithm=settings.ALGORITHM)
+
+        base_url = settings.FRONTEND_URL.rstrip("/")
+        reset_link = f"{base_url}/reset-password/{token}"
+        safe_link = html.escape(reset_link, quote=True)
+        subject = "Secure Password Reset Request"
+        html_body = f"<p>You requested a password reset. Click the link below to set a new password. This link securely expires in 15 minutes.</p><p><a href='{safe_link}'>Reset Password</a></p>"
+        # BUG #1 FIX (CRITICAL): Use background_tasks instead of awaiting inline.
+        # Previously, SMTP failures raised HTTP 503 for real users but the dummy-hash
+        # path always returned 200 — trivially enumerable. Sending in the background
+        # ensures both paths always return 200 with identical timing.
+        background_tasks.add_task(send_email_async, user.email, subject, html_body)
+    else:
+        # No dummy hash here. With SMTP running in background_tasks, both paths are incredibly fast. 
+        # Adding a dummy hash here creates an inverse timing differential.
+        pass
+
+    return {"message": "If that email exists in our system, a password reset link has been sent."}
+
+
+@router.post("/reset-password")
+@limiter.limit("5/minute")
+async def reset_password(request: Request, body: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    # Extract email from unverified claims to look up the user's dynamic secret.
+    # The token CANNOT be fully verified here because the secret depends on the
+    # user's current hashed_password (looked up by email).  We keep error messages
+    # opaque to avoid leaking whether the email exists.
+    try:
+        unverified_payload = jwt.get_unverified_claims(body.token)
+        email = unverified_payload.get("sub")
+        if not email or not isinstance(email, str):
+            raise ValueError("missing sub")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    if not body.new_password or len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    if not re.search(r'[A-Z]', body.new_password) or not re.search(r'[^a-zA-Z0-9]', body.new_password):
+        raise HTTPException(
+            status_code=400, detail="Password must contain at least one uppercase letter and one special character")
+
+    result = await db.execute(select(User).where(User.email == email.lower()))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    dynamic_secret = f"{settings.SECRET_KEY}{user.hashed_password}"
+    try:
+        payload = jwt.decode(body.token, dynamic_secret, algorithms=[settings.ALGORITHM])
+        if payload.get("type") != "reset":
+            raise ValueError("Invalid token type")
+    except (JWTError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    user.hashed_password = hash_password(body.new_password)
+    user.token_revoked_before = datetime.now(timezone.utc)
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(timezone.utc))
+    )
+    await db.commit()
+    return {"message": "Password updated successfully"}
+
+
+@router.get("/me", response_model=UserOut)
+async def me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
+@router.put("/me", response_model=UserOut)
+async def update_me(body: UserUpdate, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    # BUG 11 FIX: get_current_user uses its own session; mutating that object and
+    # committing a *different* db session is an async SQLAlchemy anti-pattern —
+    # changes may silently not persist or raise DetachedInstanceError under load.
+    # Re-fetch the user within this request's session before mutating.
+    db_user = await db.get(User, user.id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if body.full_name is not None:
+        db_user.full_name = body.full_name
+    if body.bio is not None:
+        db_user.bio = body.bio
+    if body.preferences is not None:
+        db_user.preferences = body.preferences
+
+    await log_action(db, user.id, "UPDATE_PROFILE", "auth")
+    await db.commit()
+    await db.refresh(db_user)
+    return db_user
+
+
+@router.post("/change-password")
+@limiter.limit("5/minute")
+async def change_password(
+    request: Request,
+    body: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Change the authenticated user's password by verifying the current one."""
+    # BUG #17 FIX (MEDIUM): Re-fetch user within this request's session FIRST,
+    # then verify against the fresh db_user.hashed_password — not the stale
+    # `user` object from get_current_user's separate session.
+    db_user = await db.get(User, user.id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not verify_password(body.current_password, db_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    if not re.search(r'[A-Z]', body.new_password) or not re.search(r'[^a-zA-Z0-9]', body.new_password):
+        raise HTTPException(
+            status_code=400, detail="Password must contain at least one uppercase letter and one special character")
+    if verify_password(body.new_password, db_user.hashed_password):
+        raise HTTPException(
+            status_code=400, detail="New password must be different from the current password")
+
+    db_user.hashed_password = hash_password(body.new_password)
+    db_user.token_revoked_before = datetime.now(timezone.utc)
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == db_user.id, RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(timezone.utc))
+    )
+    await log_action(db, user.id, "CHANGE_PASSWORD", "auth")
+    await db.commit()  # commit password change + audit log in one transaction
+    return {"message": "Password changed successfully"}

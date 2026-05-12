@@ -1,0 +1,101 @@
+[
+  {
+    "name": "flow_jd_create",
+    "status": 201,
+    "body": {
+      "id": "a8733f3d-45b8-4e0a-a3b3-8577c54408a2",
+      "title": "Backend Engineer",
+      "role": "Backend Engineer",
+      "location": "Remote",
+      "employment_type": "Full-time",
+      "experience_min": 2,
+      "experience_max": 5,
+      "must_have_skills": [
+        "python",
+        "fastapi",
+        "sql"
+      ],
+      "good_to_have_skills": [
+        "docker"
+      ],
+      "description": "Build APIs",
+      "salary_range": null,
+      "education_requirement": "preferred",
+      "resume_weight": 50,
+      "quiz_weight": 50,
+      "pass_threshold": 60,
+      "is_active": true,
+      "created_at": "2026-05-05T17:06:52.380383"
+    }
+  },
+  {
+    "name": "flow_candidate_apply",
+    "status": 500,
+    "body": {
+      "detail": "Internal server error. Check server logs for details."
+    }
+  },
+  {
+    "name": "flow_analytics_summary_after_apply",
+    "status": 200,
+    "body": {
+      "total_applicants": 0,
+      "shortlisted_count": 0,
+      "shortlisted_pct": 0.0,
+      "strong_count": 0,
+      "medium_count": 0,
+      "reject_count": 0,
+      "quiz_taken_count": 0,
+      "ranked_count": 0,
+      "avg_resume_score": 0.0,
+      "avg_quiz_score": null,
+      "avg_final_score": null,
+      "pass_count": 0,
+      "fail_count": 0
+    }
+  },
+  {
+    "name": "flow_quiz_generate",
+    "status": 201,
+    "body": {
+      "id": "119ea808-64d0-49d8-80b4-4170d340fe53",
+      "job_id": "a8733f3d-45b8-4e0a-a3b3-8577c54408a2",
+      "title": "Flow Quiz",
+      "duration_minutes": 30,
+      "is_active": true,
+      "question_count": 20,
+      "created_at": "2026-05-05T17:06:52.529684"
+    }
+  },
+  {
+    "name": "flow_quiz_send_links",
+    "status": 422,
+    "body": {
+      "detail": [
+        {
+          "type": "string_type",
+          "loc": [
+            "body",
+            "candidate_ids",
+            0
+          ],
+          "msg": "Input should be a valid string",
+          "input": null
+        }
+      ],
+      "message": "Validation error"
+    }
+  },
+  {
+    "name": "flow_quiz_start",
+    "status": 400,
+    "body": {
+      "detail": "Quiz token is required"
+    }
+  },
+  {
+    "name": "flow_candidate_results_after_quiz",
+    "status": 200,
+    "body": []
+  }
+]

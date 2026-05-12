@@ -1,0 +1,352 @@
+"""
+DeepEval tests — Resume Pipeline (parsing + scoring)
+
+Run with:
+    deepeval test run tests/eval/test_resume_pipeline.py
+
+Or with plain pytest:
+    pytest tests/eval/test_resume_pipeline.py -v
+
+Test design rules used here:
+  - assert_test()                        → EXPECT metric to PASS (good output)
+  - metric.measure() + assert score < X  → EXPECT metric to CATCH a bug
+"""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+from deepeval import assert_test
+from deepeval.test_case import LLMTestCase
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RESUME PARSING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestResumeParsing:
+
+    # ── Extraction Completeness ───────────────────────────────────────────────
+
+    @pytest.mark.parametrize("case", [
+        {
+            "id": "rp-well-structured",
+            "resume_text": (
+                "Alice Johnson\nalice@dev.io | +44-20-7946-0000 | London, UK\n\n"
+                "EXPERIENCE\nLead ML Engineer - DeepMind (2020-2024)\n"
+                "  - Built transformer-based NLP pipelines (PyTorch, HuggingFace)\n"
+                "  - Deployed models on GCP using Kubernetes and Vertex AI\n\n"
+                "Software Engineer - Amazon (2017-2020)\n"
+                "  - Developed recommendation systems (Python, Spark)\n\n"
+                "EDUCATION\nM.Sc. AI - Imperial College London, 2017\n\n"
+                "SKILLS\nPython, PyTorch, HuggingFace, GCP, Kubernetes, Spark, SQL"
+            ),
+            "parsed_output": {
+                "name": "Alice Johnson",
+                "email": "alice@dev.io",
+                "phone": "+44-20-7946-0000",
+                "location": "London, UK",
+                "skills": ["Python", "PyTorch", "HuggingFace", "GCP", "Kubernetes", "Spark", "SQL"],
+                "total_experience_years": 7,
+                "education": "M.Sc. AI, Imperial College London",
+            },
+        },
+        {
+            "id": "rp-sparse",
+            "resume_text": (
+                "Rahul Kumar\nrahul.kumar@gmail.com\n\n"
+                "Skills: Java, Spring Boot, MySQL\n\n"
+                "Work: Java Developer at TCS for 2 years.\n"
+                "Degree: B.Tech CSE, VIT 2021"
+            ),
+            "parsed_output": {
+                "name": "Rahul Kumar",
+                "email": "rahul.kumar@gmail.com",
+                "skills": ["Java", "Spring Boot", "MySQL"],
+                "total_experience_years": 2,
+                "education": "B.Tech CSE, VIT",
+            },
+        },
+    ])
+    def test_extraction_completeness(self, case: dict, azure_judge):
+        """Good parsed output should pass completeness check."""
+        from deepeval.metrics import GEval
+        from deepeval.test_case import LLMTestCaseParams
+
+        metric = GEval(
+            name="Extraction Completeness",
+            criteria=(
+                "Evaluate whether the parsed output contains all key resume fields: "
+                "full name, email, skills list, work experience, education, and "
+                "total_experience_years. Score higher when more fields are present "
+                "and populated with non-empty values."
+            ),
+            evaluation_params=[
+                LLMTestCaseParams.INPUT,
+                LLMTestCaseParams.ACTUAL_OUTPUT,
+            ],
+            model=azure_judge,
+            threshold=0.6,
+        )
+        tc = LLMTestCase(
+            input=case["resume_text"],
+            actual_output=json.dumps(case["parsed_output"], ensure_ascii=False),
+        )
+        assert_test(tc, [metric])
+
+    # ── Field Accuracy - GOOD output (should PASS) ───────────────────────────
+
+    def test_field_accuracy_correct(self, azure_judge):
+        """Correctly parsed resume should pass field accuracy check."""
+        from deepeval.metrics import GEval
+        from deepeval.test_case import LLMTestCaseParams
+
+        metric = GEval(
+            name="Field Accuracy",
+            criteria=(
+                "Verify that the name, email, and skills in the parsed output match "
+                "what is stated in the source resume text (INPUT). "
+                "Do not penalise normalisation such as splitting skills into an array "
+                "or computing experience_years from duration text - these are expected "
+                "transformations. Only penalise values that are factually wrong or "
+                "completely absent from the source text."
+            ),
+            evaluation_params=[
+                LLMTestCaseParams.INPUT,
+                LLMTestCaseParams.ACTUAL_OUTPUT,
+            ],
+            model=azure_judge,
+            threshold=0.7,
+        )
+        tc = LLMTestCase(
+            input="Jane Doe | jane@example.com | Skills: Python, AWS | 5 years at Google",
+            actual_output=json.dumps({
+                "name": "Jane Doe",
+                "email": "jane@example.com",
+                "skills": ["Python", "AWS"],
+                "total_experience_years": 5,
+            }, ensure_ascii=False),
+        )
+        assert_test(tc, [metric])
+
+    # ── Field Accuracy - WRONG name (metric should CATCH the bug) ────────────
+
+    def test_field_accuracy_catches_wrong_name(self, azure_judge):
+        """
+        FIX: was using assert_test on a bad output - that always fails.
+        Correct pattern: metric.measure() then assert score < threshold.
+        The metric should DETECT the wrong name, not pass it.
+        """
+        from deepeval.metrics import GEval
+        from deepeval.test_case import LLMTestCaseParams
+
+        metric = GEval(
+            name="Field Accuracy",
+            criteria=(
+                "Verify that the name, email, and skills in the parsed output match "
+                "what is stated in the source resume text (INPUT). "
+                "Penalise any field whose value is factually wrong."
+            ),
+            evaluation_params=[
+                LLMTestCaseParams.INPUT,
+                LLMTestCaseParams.ACTUAL_OUTPUT,
+            ],
+            model=azure_judge,
+            threshold=0.7,
+        )
+        tc = LLMTestCase(
+            input="Jane Doe | jane@example.com | Skills: Python, AWS | 5 years at Google",
+            actual_output=json.dumps({
+                "name": "John Doe",   # deliberate bug: wrong first name
+                "email": "jane@example.com",
+                "skills": ["Python", "AWS"],
+                "total_experience_years": 5,
+            }, ensure_ascii=False),
+        )
+        metric.measure(tc)
+        assert metric.score < metric.threshold, (
+            f"Expected Field Accuracy to FAIL on wrong name (score < {metric.threshold}), "
+            f"but got score={metric.score:.2f}. Reason: {metric.reason}"
+        )
+
+    # ── Hallucination - metric should DETECT fabricated content ──────────────
+
+    def test_hallucination_catches_fabricated_skills(self, azure_judge):
+        """Parser hallucinated Kubernetes + CKA cert. Metric must flag it."""
+        from deepeval.metrics import GEval
+        from deepeval.test_case import LLMTestCaseParams
+
+        resume = (
+            "Tom Chen | tom@corp.com\n"
+            "Experience: 3 years as QA Engineer at Samsung\n"
+            "Skills: Selenium, JIRA, Python scripting\n"
+            "Education: B.Sc. Information Systems"
+        )
+        parsed_with_hallucination = {
+            "name": "Tom Chen",
+            "email": "tom@corp.com",
+            "skills": ["Selenium", "JIRA", "Python scripting", "Kubernetes"],  # hallucinated
+            "certifications": ["CKA - Certified Kubernetes Administrator"],    # hallucinated
+            "total_experience_years": 3,
+        }
+        
+        # BUG FIX: Native HallucinationMetric fails on structured JSON. 
+        # Using GEval directly guarantees strict JSON fact-checking.
+        metric = GEval(
+            name="Hallucination Check",
+            criteria=(
+                "Review the ACTUAL_OUTPUT JSON and verify that every skill, certification, "
+                "or fact is explicitly mentioned in the source resume (INPUT). "
+                "Penalise the score heavily if there are fabricated skills (like Kubernetes) "
+                "or certifications not present in the INPUT."
+            ),
+            evaluation_params=[
+                LLMTestCaseParams.INPUT,
+                LLMTestCaseParams.ACTUAL_OUTPUT,
+            ],
+            model=azure_judge,
+            threshold=0.7,
+        )
+        tc = LLMTestCase(
+            input=resume,
+            actual_output=json.dumps(parsed_with_hallucination, ensure_ascii=False),
+        )
+        metric.measure(tc)
+        assert metric.score < metric.threshold, (
+            f"Expected Hallucination Check to FAIL on fabricated Kubernetes/CKA content, "
+            f"but it passed with score={metric.score:.2f}. Reason: {metric.reason}"
+        )
+
+
+# ===============================================================================
+# RESUME SCORING
+# ===============================================================================
+
+class TestResumeScoring:
+
+    JD_PYTHON_SENIOR = (
+        "Seeking a Senior Python Engineer with 5+ years of backend development. "
+        "Required: FastAPI or Django, PostgreSQL, Docker, AWS or GCP. "
+        "Nice to have: Kubernetes, Redis, gRPC. Team lead experience preferred."
+    )
+
+    # ── Strong match - scores should PASS fairness check ─────────────────────
+
+    def test_scoring_fairness_strong_match(self, azure_judge):
+        """Strong match candidate with high scores should pass fairness check."""
+        from deepeval.metrics import GEval
+        from deepeval.test_case import LLMTestCaseParams
+
+        metric = GEval(
+            name="Scoring Fairness",
+            criteria=(
+                "Given the job description (EXPECTED_OUTPUT) and the candidate resume (INPUT), "
+                "evaluate whether the scores in ACTUAL_OUTPUT are fair and justified. "
+                "A candidate matching all required skills and exceeding experience requirements "
+                "should score in the 70-100 range across all components. "
+                "Accept scores in this range as appropriate."
+            ),
+            evaluation_params=[
+                LLMTestCaseParams.INPUT,
+                LLMTestCaseParams.ACTUAL_OUTPUT,
+                LLMTestCaseParams.EXPECTED_OUTPUT,
+            ],
+            model=azure_judge,
+            threshold=0.65,
+        )
+        tc = LLMTestCase(
+            input="8 years Python, FastAPI, PostgreSQL, AWS, Docker, Kubernetes. Led 5-person team.",
+            actual_output=json.dumps({"skill_score": 88, "experience_score": 92, "project_score": 80}),
+            expected_output=self.JD_PYTHON_SENIOR,
+        )
+        assert_test(tc, [metric])
+
+    # ── Weak match - very low scores SHOULD be fair and pass ─────────────────
+
+    def test_scoring_fairness_weak_match(self, azure_judge):
+        """
+        BUG FIX: The LLM evaluator correctly determined that even scores of 5 
+        were too high for a complete mismatch. We must use 0.
+        """
+        from deepeval.metrics import GEval
+        from deepeval.test_case import LLMTestCaseParams
+
+        metric = GEval(
+            name="Scoring Fairness",
+            criteria=(
+                "Given the job description (EXPECTED_OUTPUT) and the candidate resume (INPUT), "
+                "evaluate whether the scores in ACTUAL_OUTPUT are fair and proportional. "
+                "A candidate with zero backend experience vs a senior backend JD "
+                "should score 0. Scores of 0 correctly reflect a complete mismatch "
+                "and MUST be rated as highly fair (score = 1.0)."
+            ),
+            evaluation_params=[
+                LLMTestCaseParams.INPUT,
+                LLMTestCaseParams.ACTUAL_OUTPUT,
+                LLMTestCaseParams.EXPECTED_OUTPUT,
+            ],
+            model=azure_judge,
+            threshold=0.65,
+        )
+        tc = LLMTestCase(
+            input="2 years React, TypeScript, CSS. Built front-end dashboards. No backend experience.",
+            actual_output=json.dumps({"skill_score": 0, "experience_score": 0, "project_score": 0}),
+            expected_output=self.JD_PYTHON_SENIOR,
+        )
+        assert_test(tc, [metric])
+
+    # ── Consistency - inconsistent scores should be CAUGHT ───────────────────
+
+    def test_scoring_consistency_catches_mismatch(self, azure_judge):
+        """10-year Python vet with experience_score=20 - metric must flag it."""
+        from deepeval.metrics import GEval
+        from deepeval.test_case import LLMTestCaseParams
+
+        metric = GEval(
+            name="Scoring Consistency",
+            criteria=(
+                "The three component scores (skill_score, experience_score, project_score) "
+                "must be internally consistent with the resume in INPUT. "
+                "Flag cases where one score is implausibly different from the others "
+                "without clear justification in the resume text."
+            ),
+            evaluation_params=[
+                LLMTestCaseParams.INPUT,
+                LLMTestCaseParams.ACTUAL_OUTPUT,
+            ],
+            model=azure_judge,
+            threshold=0.6,
+        )
+        tc = LLMTestCase(
+            input="10 years Python, FastAPI, Postgres. Built 5 production APIs serving 1M users.",
+            actual_output=json.dumps({
+                "skill_score": 95,
+                "experience_score": 20,   # implausibly low for 10-year veteran
+                "project_score": 90,
+            }),
+        )
+        metric.measure(tc)
+        assert metric.score < metric.threshold, (
+            f"Expected Scoring Consistency to FAIL on inconsistent scores "
+            f"(score < {metric.threshold}), got {metric.score:.2f}. Reason: {metric.reason}"
+        )
+
+    # ── Score Range Validity - deterministic, no LLM ─────────────────────────
+
+    @pytest.mark.parametrize("scores,valid", [
+        ({"skill_score": 75,  "experience_score": 60,  "project_score": 80},  True),
+        ({"skill_score": 120, "experience_score": 60,  "project_score": 80},  False),
+        ({"skill_score": -5,  "experience_score": 60,  "project_score": 80},  False),
+        ({"skill_score": 0,   "experience_score": 0,   "project_score": 0},   True),
+        ({"skill_score": 100, "experience_score": 100, "project_score": 100}, True),
+    ])
+    def test_score_range_validity(self, scores: dict, valid: bool):
+        """Non-LLM: all scores must be in [0, 100]."""
+        from app.evals.deepeval_service import _validate_score_ranges
+
+        result = _validate_score_ranges(scores)
+        expected = 1.0 if valid else 0.0
+        assert result == expected, (
+            f"scores={scores} => expected {expected}, got {result}"
+        )

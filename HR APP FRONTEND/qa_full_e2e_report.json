@@ -1,0 +1,129 @@
+{
+  "timestamp": "2026-05-09T07:45:39.278Z",
+  "recruiter": {
+    "first": "QA",
+    "last": "Recruiter1778312739278",
+    "email": "qa.recruiter.1778312739278@example.com",
+    "password": "Qa!Pass2026A"
+  },
+  "candidate": {
+    "first": "QA",
+    "last": "Candidate1778312739278",
+    "email": "qa.candidate.1778312739278@example.com",
+    "password": "Qa!Pass2026A"
+  },
+  "job": {
+    "title": "QA E2E Backend Engineer 1778312739278",
+    "id": "e8f3c55a-738d-4409-9c1f-9ac35f659ee6"
+  },
+  "recruiterFlow": {
+    "signupOk": true,
+    "jdUploadOk": true,
+    "jobOpenOk": true,
+    "bulkUploadTriggered": true,
+    "shortlistRan": true,
+    "quizGenerateAttempted": true,
+    "quizGenerated": true,
+    "candidatesAfterUpload": 12,
+    "scoreStats": {
+      "count": 12,
+      "min": 19.93,
+      "max": 70.37,
+      "avg": 49.02,
+      "std": 20.37
+    },
+    "tagCounts": {
+      "Strong": 0,
+      "Medium": 7,
+      "Reject": 5,
+      "Unknown": 0
+    },
+    "topCandidates": [
+      {
+        "name": "Aarav Sharma",
+        "score": 70.37,
+        "tag": "Medium",
+        "skills": [
+          "postgresql",
+          "rest api",
+          "fastapi",
+          "python",
+          "docker",
+          "sql"
+        ]
+      },
+      {
+        "name": "Diya Mehta",
+        "score": 69.42,
+        "tag": "Medium",
+        "skills": [
+          "microservices",
+          "fastapi",
+          "python",
+          "docker",
+          "redis",
+          "sql"
+        ]
+      },
+      {
+        "name": "Rohan Iyer",
+        "score": 67.84,
+        "tag": "Medium",
+        "skills": [
+          "postgresql",
+          "kubernetes",
+          "rest api",
+          "python",
+          "flask"
+        ]
+      },
+      {
+        "name": "Ananya Rao",
+        "score": 67.72,
+        "tag": "Medium",
+        "skills": [
+          "postgresql",
+          "kubernetes",
+          "rest api",
+          "fastapi",
+          "python",
+          "docker"
+        ]
+      },
+      {
+        "name": "Priya Desai",
+        "score": 61.88,
+        "tag": "Medium",
+        "skills": [
+          "postgresql",
+          "python",
+          "docker",
+          "django",
+          "redis",
+          "aws"
+        ]
+      }
+    ],
+    "diagnostics": {
+      "consoleErrors": [],
+      "pageErrors": [],
+      "apiErrors": []
+    }
+  },
+  "candidateFlow": {
+    "signupOk": true,
+    "vaultUploadCount": 5,
+    "vaultFullReached": true,
+    "appliedToJob": true,
+    "mockTestStarted": true,
+    "mockTestSubmitted": true,
+    "mockScoreText": "100%",
+    "diagnostics": {
+      "consoleErrors": [],
+      "pageErrors": [],
+      "apiErrors": []
+    }
+  },
+  "findings": [],
+  "verdict": "PASS_WITH_RESERVATIONS"
+}
