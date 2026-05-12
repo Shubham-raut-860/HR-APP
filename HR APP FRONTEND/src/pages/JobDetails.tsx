@@ -73,6 +73,21 @@ interface AnalyticsSummary {
   fail_count: number;
 }
 
+const EMPTY_ANALYTICS_SUMMARY: AnalyticsSummary = {
+  total_applicants: 0,
+  shortlisted_count: 0,
+  shortlisted_pct: 0,
+  strong_count: 0,
+  medium_count: 0,
+  reject_count: 0,
+  avg_resume_score: 0,
+  avg_quiz_score: null,
+  avg_quiz_pct: null,
+  avg_final_score: null,
+  pass_count: 0,
+  fail_count: 0,
+};
+
 export interface ScoreBreakdown {
   ai_score_used: boolean;
   hire_recommendation: string;
@@ -205,6 +220,7 @@ export default function JobDetails() {
   const [rankingsPageSize, setRankingsPageSize] = useState(25);
   const [rankingsTagFilter, setRankingsTagFilter] = useState<string>('all');
   const [analyticsSubTab, setAnalyticsSubTab] = useState<'overview' | 'rankings' | 'skillgap'>('overview');
+  const analyticsSummary = summary ?? EMPTY_ANALYTICS_SUMMARY;
 
   // Email State
   const [emailModalOpen, setEmailModalOpen] = useState(false);
@@ -869,8 +885,8 @@ export default function JobDetails() {
         <StatCard icon={BrainCircuit} label="Quiz Taken" value={testedCount}
           sub={`${shortlistedCount ? Math.round(testedCount / (shortlistedCount || 1) * 100) : 0}% of shortlisted`}
           color="text-blue-600" />
-        <StatCard icon={Trophy} label="Passed" value={summary?.pass_count ?? 0}
-          sub={`${summary?.avg_final_score ? `Avg ${summary.avg_final_score.toFixed(1)}%` : "No final scores yet"}`}
+        <StatCard icon={Trophy} label="Passed" value={analyticsSummary.pass_count}
+          sub={`${analyticsSummary.avg_final_score != null ? `Avg ${analyticsSummary.avg_final_score.toFixed(1)}%` : "No final scores yet"}`}
           color="text-amber-600" />
       </div>
 
@@ -1423,11 +1439,11 @@ export default function JobDetails() {
               {analyticsSubTab === 'overview' && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                    <StatCard icon={Users} label="Total" value={summary.total_applicants} />
-                    <StatCard icon={CheckCircle2} label="Shortlisted" value={`${summary.shortlisted_pct.toFixed(1)}%`} sub={`${summary.shortlisted_count} candidates`} color="text-emerald-600" />
-                    <StatCard icon={Target} label="Avg Resume" value={`${summary.avg_resume_score.toFixed(1)}%`} color="text-blue-600" />
-                    <StatCard icon={BrainCircuit} label="Avg Quiz" value={(summary.avg_quiz_pct ?? summary.avg_quiz_score) != null ? `${(summary.avg_quiz_pct ?? summary.avg_quiz_score)!.toFixed(1)}%` : "N/A"} color="text-purple-600" />
-                    <StatCard icon={Trophy} label="Pass Rate" value={summary.pass_count + summary.fail_count > 0 ? `${Math.round(summary.pass_count / (summary.pass_count + summary.fail_count) * 100)}%` : "N/A"} sub={`${summary.pass_count} passed`} color="text-amber-600" />
+                    <StatCard icon={Users} label="Total" value={analyticsSummary.total_applicants} />
+                    <StatCard icon={CheckCircle2} label="Shortlisted" value={`${analyticsSummary.shortlisted_pct.toFixed(1)}%`} sub={`${analyticsSummary.shortlisted_count} candidates`} color="text-emerald-600" />
+                    <StatCard icon={Target} label="Avg Resume" value={`${analyticsSummary.avg_resume_score.toFixed(1)}%`} color="text-blue-600" />
+                    <StatCard icon={BrainCircuit} label="Avg Quiz" value={(analyticsSummary.avg_quiz_pct ?? analyticsSummary.avg_quiz_score) != null ? `${(analyticsSummary.avg_quiz_pct ?? analyticsSummary.avg_quiz_score)!.toFixed(1)}%` : "N/A"} color="text-purple-600" />
+                    <StatCard icon={Trophy} label="Pass Rate" value={analyticsSummary.pass_count + analyticsSummary.fail_count > 0 ? `${Math.round(analyticsSummary.pass_count / (analyticsSummary.pass_count + analyticsSummary.fail_count) * 100)}%` : "N/A"} sub={`${analyticsSummary.pass_count} passed`} color="text-amber-600" />
                   </div>
 
                   <div className="grid gap-4 lg:grid-cols-2">
@@ -1437,11 +1453,11 @@ export default function JobDetails() {
                       </CardHeader>
                       <CardContent className="space-y-4">
                         {[
-                          { label: "Strong", count: summary.strong_count, color: "bg-emerald-500", textColor: "text-emerald-700 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/30" },
-                          { label: "Medium", count: summary.medium_count, color: "bg-amber-500", textColor: "text-amber-700 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-950/30" },
-                          { label: "Reject", count: summary.reject_count, color: "bg-red-400", textColor: "text-red-700 dark:text-red-400", bg: "bg-red-50 dark:bg-red-950/30" },
+                          { label: "Strong", count: analyticsSummary.strong_count, color: "bg-emerald-500", textColor: "text-emerald-700 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/30" },
+                          { label: "Medium", count: analyticsSummary.medium_count, color: "bg-amber-500", textColor: "text-amber-700 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-950/30" },
+                          { label: "Reject", count: analyticsSummary.reject_count, color: "bg-red-400", textColor: "text-red-700 dark:text-red-400", bg: "bg-red-50 dark:bg-red-950/30" },
                         ].map(t => {
-              const pct = summary.total_applicants ? Math.round(t.count / summary.total_applicants * 100) : 0;
+              const pct = analyticsSummary.total_applicants ? Math.round(t.count / analyticsSummary.total_applicants * 100) : 0;
                           return (
                             <div key={t.label} className="space-y-1.5">
                               <div className="flex items-center justify-between text-sm">
@@ -1449,7 +1465,7 @@ export default function JobDetails() {
                                   <span className={cn("font-semibold", t.textColor)}>{t.label}</span>
                                   <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", t.bg, t.textColor)}>{pct}%</span>
                                 </div>
-                                <span className="text-muted-foreground text-xs">{t.count} of {summary.total_applicants}</span>
+                                <span className="text-muted-foreground text-xs">{t.count} of {analyticsSummary.total_applicants}</span>
                               </div>
                               <div className="h-2.5 bg-muted rounded-full overflow-hidden">
                                 <div className={cn("h-full rounded-full transition-all duration-500", t.color)} style={{ width: `${pct}%` }} />
