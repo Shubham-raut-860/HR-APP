@@ -1,0 +1,13 @@
+# ─── Metaflow local state — never commit ──────────────────────────────────────
+# Metaflow writes its run database, artifact blobs, and logs here.
+# All of this is machine-local and fully reproducible by re-running the flow.
+.metaflow/
+
+# ─── Python cache ─────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+
+# ─── Editor / OS noise ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

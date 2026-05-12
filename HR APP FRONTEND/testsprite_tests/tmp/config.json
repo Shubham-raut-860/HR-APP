@@ -1,0 +1,20 @@
+{
+  "status": "commited",
+  "type": "frontend",
+  "scope": "codebase",
+  "localEndpoint": "http://localhost:3000/\"d:\\\\shubham\\\\HR APP\\\\Frontend\"",
+  "loginUser": "shubham.raut96@gmail.com",
+  "loginPassword": "123456789",
+  "executionArgs": {
+    "projectName": "Frontend",
+    "projectPath": "d:\\shubham\\HR APP\\Frontend",
+    "testIds": [],
+    "additionalInstruction": "Identify and test the main pages: Landing, Login, Candidate Dashboard, and HR Dashboard. The server is running on port 3000. Use auto-discovery if the test plan is empty.",
+    "serverMode": "development",
+    "envs": {
+      "API_KEY": "sk-user-OPWlft2vDs8UtP-WslaYxUAS4WdSVdPPKzJpnOMh2eI2CqNKqQ4YRm2X8rgS7hi_VNt7sgDISaRibGB5G58XRxhZVLcczE1FQvFLa7MdFp_3jteAGY0qMUn45pQd-QfJJoI"
+    }
+  },
+  "serverPort": 64406,
+  "proxy": "http://d414b6a4-6573-4057-97ea-f8832711c073:G4ZpQQUwS7v7xmi8W2BHnLAoMGzmUbGG@tun.testsprite.com:8080"
+}

@@ -1,0 +1,591 @@
+{
+  "generated_at_utc": "2026-05-08T07:45:22.120445",
+  "dataset_dir": "D:\\Shubham\\HR APP\\HR APP BACKEND\\test_docs\\perf_bulk_500",
+  "dataset_count": 500,
+  "sizes": [
+    100,
+    250,
+    500
+  ],
+  "results": [
+    {
+      "mode": "native",
+      "runs": [
+        {
+          "mode": "native",
+          "size": 100,
+          "submit_latency_s": 0.12,
+          "async_total_s": 4.14,
+          "time_to_first_processed_s": 2.11,
+          "max_stall_between_progress_s": 2.11,
+          "throughput_files_per_s": 24.15,
+          "status": "completed",
+          "orchestrator": "native",
+          "accepted_count": 100,
+          "success_count": 100,
+          "failed_count": 0,
+          "duplicate_count": 0,
+          "http_status": 200,
+          "progress_tail": [
+            {
+              "t": 0.04,
+              "status": "running",
+              "processed": 0,
+              "total": 100,
+              "success_count": 0,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 2.11,
+              "status": "running",
+              "processed": 50,
+              "total": 100,
+              "success_count": 50,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 4.14,
+              "status": "completed",
+              "processed": 100,
+              "total": 100,
+              "success_count": 100,
+              "failed_count": 0,
+              "duplicate_count": 0
+            }
+          ],
+          "job_id": "e86d6964-95c9-4888-a27f-669b807cd015",
+          "job_title": "Perf native job 100 1778226338"
+        },
+        {
+          "mode": "native",
+          "size": 250,
+          "submit_latency_s": 0.24,
+          "async_total_s": 8.24,
+          "time_to_first_processed_s": 2.08,
+          "max_stall_between_progress_s": 2.12,
+          "throughput_files_per_s": 30.333,
+          "status": "completed",
+          "orchestrator": "native",
+          "accepted_count": 250,
+          "success_count": 250,
+          "failed_count": 0,
+          "duplicate_count": 0,
+          "http_status": 200,
+          "progress_tail": [
+            {
+              "t": 0.07,
+              "status": "queued",
+              "processed": 0,
+              "total": 250,
+              "success_count": 0,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 2.08,
+              "status": "running",
+              "processed": 50,
+              "total": 250,
+              "success_count": 50,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 4.2,
+              "status": "running",
+              "processed": 100,
+              "total": 250,
+              "success_count": 100,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 6.22,
+              "status": "running",
+              "processed": 200,
+              "total": 250,
+              "success_count": 200,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 8.24,
+              "status": "completed",
+              "processed": 250,
+              "total": 250,
+              "success_count": 250,
+              "failed_count": 0,
+              "duplicate_count": 0
+            }
+          ],
+          "job_id": "1c217097-24ab-4e2c-8063-12f818df3aa9",
+          "job_title": "Perf native job 250 1778226350"
+        },
+        {
+          "mode": "native",
+          "size": 500,
+          "submit_latency_s": 0.42,
+          "async_total_s": 14.88,
+          "time_to_first_processed_s": 2.19,
+          "max_stall_between_progress_s": 2.33,
+          "throughput_files_per_s": 33.596,
+          "status": "completed",
+          "orchestrator": "native",
+          "accepted_count": 500,
+          "success_count": 500,
+          "failed_count": 0,
+          "duplicate_count": 0,
+          "http_status": 200,
+          "progress_tail": [
+            {
+              "t": 0.05,
+              "status": "queued",
+              "processed": 0,
+              "total": 500,
+              "success_count": 0,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 2.19,
+              "status": "running",
+              "processed": 50,
+              "total": 500,
+              "success_count": 50,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 4.23,
+              "status": "running",
+              "processed": 150,
+              "total": 500,
+              "success_count": 150,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 6.56,
+              "status": "running",
+              "processed": 200,
+              "total": 500,
+              "success_count": 200,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 8.69,
+              "status": "running",
+              "processed": 300,
+              "total": 500,
+              "success_count": 300,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 10.73,
+              "status": "running",
+              "processed": 400,
+              "total": 500,
+              "success_count": 400,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 12.84,
+              "status": "running",
+              "processed": 450,
+              "total": 500,
+              "success_count": 450,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 14.88,
+              "status": "completed",
+              "processed": 500,
+              "total": 500,
+              "success_count": 500,
+              "failed_count": 0,
+              "duplicate_count": 0
+            }
+          ],
+          "job_id": "ad64e963-ee30-44c9-8703-f69783f712c3",
+          "job_title": "Perf native job 500 1778226367"
+        }
+      ],
+      "server_port": 8100,
+      "recruiter_email": "perf.native.1778226337.1774@example.com"
+    },
+    {
+      "mode": "harness",
+      "runs": [
+        {
+          "mode": "harness",
+          "size": 100,
+          "submit_latency_s": 0.11,
+          "async_total_s": 64.94,
+          "time_to_first_processed_s": 32.5,
+          "max_stall_between_progress_s": 32.5,
+          "throughput_files_per_s": 1.54,
+          "status": "completed",
+          "orchestrator": "harness",
+          "accepted_count": 100,
+          "success_count": 100,
+          "failed_count": 0,
+          "duplicate_count": 0,
+          "http_status": 200,
+          "progress_tail": [
+            {
+              "t": 46.7,
+              "status": "running",
+              "processed": 50,
+              "total": 100,
+              "success_count": 50,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 48.74,
+              "status": "running",
+              "processed": 50,
+              "total": 100,
+              "success_count": 50,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 50.78,
+              "status": "running",
+              "processed": 50,
+              "total": 100,
+              "success_count": 50,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 52.81,
+              "status": "running",
+              "processed": 50,
+              "total": 100,
+              "success_count": 50,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 54.84,
+              "status": "running",
+              "processed": 50,
+              "total": 100,
+              "success_count": 50,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 56.87,
+              "status": "running",
+              "processed": 50,
+              "total": 100,
+              "success_count": 50,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 58.89,
+              "status": "running",
+              "processed": 50,
+              "total": 100,
+              "success_count": 50,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 60.9,
+              "status": "running",
+              "processed": 50,
+              "total": 100,
+              "success_count": 50,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 62.93,
+              "status": "running",
+              "processed": 50,
+              "total": 100,
+              "success_count": 50,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 64.94,
+              "status": "completed",
+              "processed": 100,
+              "total": 100,
+              "success_count": 100,
+              "failed_count": 0,
+              "duplicate_count": 0
+            }
+          ],
+          "job_id": "6f7ede3a-a160-4e8d-b926-b1e8bca26eda",
+          "job_title": "Perf harness job 100 1778226404"
+        },
+        {
+          "mode": "harness",
+          "size": 250,
+          "submit_latency_s": 0.22,
+          "async_total_s": 149.65,
+          "time_to_first_processed_s": 30.36,
+          "max_stall_between_progress_s": 30.36,
+          "throughput_files_per_s": 1.671,
+          "status": "completed",
+          "orchestrator": "harness",
+          "accepted_count": 250,
+          "success_count": 250,
+          "failed_count": 0,
+          "duplicate_count": 0,
+          "http_status": 200,
+          "progress_tail": [
+            {
+              "t": 131.46,
+              "status": "running",
+              "processed": 200,
+              "total": 250,
+              "success_count": 200,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 133.49,
+              "status": "running",
+              "processed": 200,
+              "total": 250,
+              "success_count": 200,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 135.5,
+              "status": "running",
+              "processed": 200,
+              "total": 250,
+              "success_count": 200,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 137.52,
+              "status": "running",
+              "processed": 200,
+              "total": 250,
+              "success_count": 200,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 139.54,
+              "status": "running",
+              "processed": 200,
+              "total": 250,
+              "success_count": 200,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 141.57,
+              "status": "running",
+              "processed": 200,
+              "total": 250,
+              "success_count": 200,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 143.58,
+              "status": "running",
+              "processed": 200,
+              "total": 250,
+              "success_count": 200,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 145.6,
+              "status": "running",
+              "processed": 200,
+              "total": 250,
+              "success_count": 200,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 147.62,
+              "status": "running",
+              "processed": 200,
+              "total": 250,
+              "success_count": 200,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 149.65,
+              "status": "completed",
+              "processed": 250,
+              "total": 250,
+              "success_count": 250,
+              "failed_count": 0,
+              "duplicate_count": 0
+            }
+          ],
+          "job_id": "cfabd107-31cd-4ad1-afdd-74c5510213c6",
+          "job_title": "Perf harness job 250 1778226477"
+        },
+        {
+          "mode": "harness",
+          "size": 500,
+          "submit_latency_s": 0.39,
+          "async_total_s": 304.24,
+          "time_to_first_processed_s": 32.39,
+          "max_stall_between_progress_s": 32.39,
+          "throughput_files_per_s": 1.643,
+          "status": "completed",
+          "orchestrator": "harness",
+          "accepted_count": 500,
+          "success_count": 500,
+          "failed_count": 0,
+          "duplicate_count": 0,
+          "http_status": 200,
+          "progress_tail": [
+            {
+              "t": 286.0,
+              "status": "running",
+              "processed": 450,
+              "total": 500,
+              "success_count": 450,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 288.02,
+              "status": "running",
+              "processed": 450,
+              "total": 500,
+              "success_count": 450,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 290.05,
+              "status": "running",
+              "processed": 450,
+              "total": 500,
+              "success_count": 450,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 292.08,
+              "status": "running",
+              "processed": 450,
+              "total": 500,
+              "success_count": 450,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 294.11,
+              "status": "running",
+              "processed": 450,
+              "total": 500,
+              "success_count": 450,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 296.13,
+              "status": "running",
+              "processed": 450,
+              "total": 500,
+              "success_count": 450,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 298.14,
+              "status": "running",
+              "processed": 450,
+              "total": 500,
+              "success_count": 450,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 300.17,
+              "status": "running",
+              "processed": 450,
+              "total": 500,
+              "success_count": 450,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 302.2,
+              "status": "running",
+              "processed": 450,
+              "total": 500,
+              "success_count": 450,
+              "failed_count": 0,
+              "duplicate_count": 0
+            },
+            {
+              "t": 304.24,
+              "status": "completed",
+              "processed": 500,
+              "total": 500,
+              "success_count": 500,
+              "failed_count": 0,
+              "duplicate_count": 0
+            }
+          ],
+          "job_id": "0197b338-4b53-47d3-ae84-c4a24d9e27d6",
+          "job_title": "Perf harness job 500 1778226636"
+        }
+      ],
+      "server_port": 8101,
+      "recruiter_email": "perf.harness.1778226403.2713@example.com"
+    }
+  ],
+  "summary": {
+    "paired": [
+      {
+        "size": 100,
+        "native_total_s": 4.14,
+        "harness_total_s": 64.94,
+        "delta_s": 60.8,
+        "native_thr": 24.15,
+        "harness_thr": 1.54,
+        "speedup_native_over_harness": 15.686
+      },
+      {
+        "size": 250,
+        "native_total_s": 8.24,
+        "harness_total_s": 149.65,
+        "delta_s": 141.41,
+        "native_thr": 30.333,
+        "harness_thr": 1.671,
+        "speedup_native_over_harness": 18.161
+      },
+      {
+        "size": 500,
+        "native_total_s": 14.88,
+        "harness_total_s": 304.24,
+        "delta_s": 289.36,
+        "native_thr": 33.596,
+        "harness_thr": 1.643,
+        "speedup_native_over_harness": 20.446
+      }
+    ]
+  }
+}

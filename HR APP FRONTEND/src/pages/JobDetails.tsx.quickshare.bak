@@ -1,0 +1,2098 @@
+import * as React from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Upload, FileText, ArrowLeft, Users, BrainCircuit, Pencil,
+  Trash2, AlertTriangle, BarChart3, Zap, Trophy, Target,
+  CheckCircle2, XCircle, Send, RefreshCw, Download, TrendingUp,
+  Clock, BookOpen, Star, ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight,
+  Copy, Mail, MoreVertical, Layers, Sparkles, ShieldAlert, Award,
+  ThumbsUp, ThumbsDown, Minus, Flame, Eye, CircleDot, ChevronDown,
+  FileUp, Link2, X, Check
+} from 'lucide-react';
+import { cn } from "@/lib/utils";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle, DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import { toast } from "sonner";
+
+import { getJob, updateJob, closeJob } from '@/services/jobs';
+import { ImportFromPoolModal } from '@/components/ImportFromPoolModal';
+import { AnalyticsView } from '@/components/AnalyticsView';
+import { getCandidates, uploadBulkResumes, uploadSingleResumeForJob, shortlistCandidates, draftCandidateEmail, sendCandidateEmail } from '@/services/candidates';
+import { generateQuiz, getQuizzes, sendQuizLinks, getQuizResults, getQuestions, uploadQuizFromFile } from '@/services/quiz';
+import { getSummary, getRankings, getSkillGap, exportExcel, exportPDF } from '@/services/analytics';
+
+//  Types 
+
+interface AnalyticsSummary {
+  total_applicants: number;
+  shortlisted_count: number;
+  shortlisted_pct: number;
+  strong_count: number;
+  medium_count: number;
+  reject_count: number;
+  avg_resume_score: number;
+  avg_quiz_score: number | null;
+  avg_final_score: number | null;
+  pass_count: number;
+  fail_count: number;
+}
+
+interface RankRow {
+  rank: number;
+  candidate_id: string;
+  name: string | null;
+  email: string | null;
+  tag: string | null;
+  resume_score: number;
+  quiz_score: number | null;
+  final_score: number | null;
+  passed: boolean | null;
+}
+
+interface SkillGapItem {
+  skill: string;
+  required: boolean;
+  candidate_match_pct: number;
+  gap_pct: number;
+}
+
+interface Quiz {
+  id: string;
+  title: string;
+  question_count: number;
+  duration_minutes: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+// ── Hire Recommendation Badge ──────────────────────────────────────────────────
+function HireRecBadge({ rec }: { rec: string }) {
+  const map: Record<string, { label: string; cls: string; icon: React.ElementType }> = {
+    strong_hire:    { label: "Strong Hire",    cls: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300", icon: ThumbsUp },
+    hire:           { label: "Hire",           cls: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/40 dark:text-blue-300", icon: CheckCircle2 },
+    maybe:          { label: "Maybe",          cls: "bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300", icon: Minus },
+    no_hire:        { label: "No Hire",        cls: "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/40 dark:text-red-300", icon: XCircle },
+    strong_no_hire: { label: "Strong No Hire", cls: "bg-red-200 text-red-900 border-red-400 dark:bg-red-900/60 dark:text-red-200", icon: ThumbsDown },
+  };
+  const cfg = map[rec] || map.maybe;
+  const Icon = cfg.icon;
+  return (
+    <span className={cn("inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border", cfg.cls)}>
+      <Icon className="h-2.5 w-2.5" />{cfg.label}
+    </span>
+  );
+}
+
+// ── Domain Fit Icon ────────────────────────────────────────────────────────────
+function DomainFitPip({ fit }: { fit: string }) {
+  if (fit === "exact")    return <span title="Exact domain match" className="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-medium"><CircleDot className="h-3 w-3" />Exact domain</span>;
+  if (fit === "adjacent") return <span title="Adjacent domain" className="inline-flex items-center gap-1 text-[10px] text-amber-600 font-medium"><CircleDot className="h-3 w-3" />Adjacent domain</span>;
+  return                         <span title="Different domain" className="inline-flex items-center gap-1 text-[10px] text-red-500 font-medium"><CircleDot className="h-3 w-3" />Wrong domain</span>;
+}
+
+// ── Score colour helper (shared) ───────────────────────────────────────────────
+function scoreColor(pct: number) {
+  if (pct >= 75) return "text-emerald-600 dark:text-emerald-400";
+  if (pct >= 50) return "text-amber-600 dark:text-amber-400";
+  return "text-red-500 dark:text-red-400";
+}
+function scoreBg(pct: number) {
+  if (pct >= 75) return "hsl(142 71% 45%)";
+  if (pct >= 50) return "hsl(38 92% 50%)";
+  return "hsl(0 72% 51%)";
+}
+
+// ── Candidate Intelligence Panel ───────────────────────────────────────────────
+// Fills the blank space below the dropzone — shows parsed candidates live.
+function CandidateIntelligencePanel({
+  candidates, navigate
+}: { candidates: any[]; navigate: (path: string) => void }) {
+  const [expanded, setExpanded] = React.useState<string | null>(null);
+  const sorted = [...candidates].sort((a: any, b: any) => b.resume_score - a.resume_score);
+  const top = sorted.slice(0, 6);
+
+  const strong  = candidates.filter((c: any) => c.tag === "Strong").length;
+  const medium  = candidates.filter((c: any) => c.tag === "Medium").length;
+  const reject  = candidates.filter((c: any) => c.tag === "Reject").length;
+  const total   = candidates.length;
+  const avgScore = total > 0 ? candidates.reduce((s: number, c: any) => s + (c.resume_score || 0), 0) / total : 0;
+
+  const strongPct = total > 0 ? Math.round(strong / total * 100) : 0;
+  const mediumPct = total > 0 ? Math.round(medium / total * 100) : 0;
+  const rejectPct = 100 - strongPct - mediumPct;
+
+  // Count hire signals
+  const strongHireCount = candidates.filter((c: any) => c.score_breakdown?.hire_recommendation === "strong_hire").length;
+  const noHireCount     = candidates.filter((c: any) => ["no_hire","strong_no_hire"].includes(c.score_breakdown?.hire_recommendation)).length;
+  const flaggedCount    = candidates.filter((c: any) => (c.score_breakdown?.red_flags?.length || 0) > 0).length;
+
+  return (
+    <div className="rounded-xl border overflow-hidden bg-card mt-1">
+      {/* ── Header strip ── */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-muted/40 border-b">
+        <div className="flex items-center gap-2">
+          <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-xs font-semibold text-foreground">Candidate Intelligence</span>
+          <span className="text-xs text-muted-foreground">— {total} parsed</span>
+        </div>
+        <div className="flex items-center gap-3 text-[11px] font-medium">
+          <span className="text-emerald-600 dark:text-emerald-400">{strong} Strong</span>
+          <span className="text-amber-600 dark:text-amber-400">{medium} Medium</span>
+          <span className="text-red-500 dark:text-red-400">{reject} Reject</span>
+          <span className="text-muted-foreground ml-1">Avg <span className={cn("font-bold", scoreColor(avgScore))}>{avgScore.toFixed(0)}%</span></span>
+        </div>
+      </div>
+
+      {/* ── Score distribution bar ── */}
+      <div className="px-4 pt-3 pb-2 border-b">
+        <div className="flex gap-0.5 h-2.5 rounded-full overflow-hidden w-full bg-muted">
+          {strongPct > 0 && <div className="bg-emerald-500 h-full transition-all" style={{ width: `${strongPct}%` }} />}
+          {mediumPct > 0 && <div className="bg-amber-400 h-full transition-all" style={{ width: `${mediumPct}%` }} />}
+          {rejectPct > 0 && <div className="bg-red-400 h-full transition-all" style={{ width: `${rejectPct}%` }} />}
+        </div>
+        <div className="flex justify-between text-[10px] text-muted-foreground mt-1.5">
+          <span>{strongPct}% shortlist-ready</span>
+          <div className="flex gap-3">
+            {strongHireCount > 0 && (
+              <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                <Flame className="h-3 w-3" />{strongHireCount} hot {strongHireCount === 1 ? "pick" : "picks"}
+              </span>
+            )}
+            {flaggedCount > 0 && (
+              <span className="flex items-center gap-1 text-amber-600 font-medium">
+                <ShieldAlert className="h-3 w-3" />{flaggedCount} flagged
+              </span>
+            )}
+            {noHireCount > 0 && (
+              <span className="flex items-center gap-1 text-red-500 font-medium">
+                <XCircle className="h-3 w-3" />{noHireCount} no-hire
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Top candidate rows ── */}
+      <div className="divide-y max-h-72 overflow-y-auto">
+        {top.map((c: any, i: number) => {
+          const bd = c.score_breakdown || {};
+          const isExpanded = expanded === c.id;
+          const hasFlags = (bd.red_flags?.length || 0) > 0;
+          const hasStandout = (bd.standout_factors?.length || 0) > 0;
+          return (
+            <div key={c.id} className={cn(
+              "transition-colors",
+              i === 0 && "bg-emerald-50/40 dark:bg-emerald-950/10",
+              hasFlags && "border-l-2 border-l-amber-400",
+              bd.hire_recommendation === "strong_hire" && "border-l-2 border-l-emerald-500",
+              ["no_hire","strong_no_hire"].includes(bd.hire_recommendation) && "border-l-2 border-l-red-400"
+            )}>
+              {/* Main row */}
+              <div className="flex items-center gap-2.5 px-3 py-2.5">
+                {/* Rank */}
+                <span className={cn(
+                  "text-xs font-bold w-5 text-center shrink-0",
+                  i === 0 ? "text-amber-500" : i === 1 ? "text-slate-400" : i === 2 ? "text-amber-700/70" : "text-muted-foreground"
+                )}>
+                  {i < 3 ? ["🥇","🥈","🥉"][i] : `#${i+1}`}
+                </span>
+
+                {/* Name + badges */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-medium text-sm truncate max-w-[140px]">{c.name || "Unknown"}</span>
+                    {bd.hire_recommendation && <HireRecBadge rec={bd.hire_recommendation} />}
+                    {bd.domain_fit && bd.domain_fit !== "exact" && <DomainFitPip fit={bd.domain_fit} />}
+                    {hasFlags && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-600 font-medium">
+                        <ShieldAlert className="h-2.5 w-2.5" />{bd.red_flags.length} flag{bd.red_flags.length > 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                    {c.experience_years}yr exp
+                    {bd.confidence && <span className={cn("ml-1.5", bd.confidence === "low" ? "text-amber-500" : "")}>
+                      · {bd.confidence} confidence
+                    </span>}
+                  </div>
+                </div>
+
+                {/* Score */}
+                <div className="text-right shrink-0">
+                  <div className={cn("text-sm font-bold tabular-nums", scoreColor(c.resume_score))}>
+                    {(c.resume_score || 0).toFixed(0)}%
+                  </div>
+                  <div className="w-12 h-1 rounded-full bg-muted overflow-hidden mt-1">
+                    <div className="h-full rounded-full" style={{ width: `${c.resume_score || 0}%`, background: scoreBg(c.resume_score || 0) }} />
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs"
+                    onClick={() => setExpanded(isExpanded ? null : c.id)}>
+                    <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", isExpanded && "rotate-180")} />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs"
+                    onClick={() => navigate(`/candidates/${c.id}`)}>
+                    <Eye className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Expanded detail */}
+              {isExpanded && (
+                <div className="px-4 pb-3 pt-0 space-y-2 bg-muted/20 text-xs border-t">
+                  {bd.reasoning && (
+                    <p className="text-muted-foreground leading-relaxed italic">"{bd.reasoning}"</p>
+                  )}
+                  <div className="flex flex-wrap gap-3">
+                    {hasStandout && (
+                      <div>
+                        <span className="font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1 mb-1">
+                          <Award className="h-3 w-3" />Standouts
+                        </span>
+                        <ul className="space-y-0.5">
+                          {bd.standout_factors.map((f: string, fi: number) => (
+                            <li key={fi} className="flex items-start gap-1 text-foreground">
+                              <span className="text-emerald-500 mt-0.5">✦</span>{f}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {hasFlags && (
+                      <div>
+                        <span className="font-semibold text-amber-600 flex items-center gap-1 mb-1">
+                          <ShieldAlert className="h-3 w-3" />Red flags
+                        </span>
+                        <ul className="space-y-0.5">
+                          {bd.red_flags.map((f: string, fi: number) => (
+                            <li key={fi} className="flex items-start gap-1 text-foreground">
+                              <span className="text-amber-500 mt-0.5">⚠</span>{f}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {(bd.matched_must_have?.length > 0 || bd.missing_must_have?.length > 0) && (
+                      <div>
+                        <span className="font-semibold text-foreground flex items-center gap-1 mb-1">
+                          <Target className="h-3 w-3" />Required skills
+                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {(bd.matched_must_have || []).map((s: string, si: number) => (
+                            <span key={si} className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 text-[10px]">✓ {s}</span>
+                          ))}
+                          {(bd.missing_must_have || []).map((s: string, si: number) => (
+                            <span key={si} className="px-1.5 py-0.5 rounded bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 text-[10px]">✗ {s}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Footer ── */}
+      {candidates.length > 6 && (
+        <div className="px-4 py-2 border-t bg-muted/20 flex items-center justify-between">
+          <span className="text-[11px] text-muted-foreground">Showing top 6 of {candidates.length}</span>
+          <button className="text-[11px] text-primary hover:underline flex items-center gap-1" onClick={() => navigate('#shortlist')}>
+            View all in Shortlist tab <ChevronRight className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Upload Ready State ─────────────────────────────────────────────────────────
+// Shown in the blank space before any resumes are uploaded.
+function UploadReadyState() {
+  const checks = [
+    { icon: Sparkles, label: "Skill depth", desc: "Checks years of usage, not just presence" },
+    { icon: BrainCircuit, label: "Domain fit", desc: "Flags wrong-domain candidates immediately" },
+    { icon: ShieldAlert, label: "Red flags", desc: "Job-hopping, gaps, domain mismatch" },
+    { icon: Award, label: "Standout factors", desc: "Identifies what makes each candidate unique" },
+    { icon: Target, label: "Seniority match", desc: "Detects over/under-qualified candidates" },
+    { icon: TrendingUp, label: "Hire signal", desc: "Strong hire → maybe → no-hire verdict" },
+  ];
+  return (
+    <div className="mt-3 rounded-xl border border-dashed bg-muted/20 p-5">
+      <div className="flex items-center gap-2 mb-3">
+        <Sparkles className="h-4 w-4 text-primary" />
+        <p className="text-sm font-semibold">What the AI checks on every resume</p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {checks.map(({ icon: Icon, label, desc }) => (
+          <div key={label} className="flex items-start gap-2.5 p-2.5 rounded-lg bg-background border">
+            <div className="p-1.5 rounded-md bg-primary/10 shrink-0 mt-0.5">
+              <Icon className="h-3 w-3 text-primary" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold leading-tight">{label}</p>
+              <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-muted-foreground mt-3 text-center">
+        Drop up to 50 resumes at once · Results appear instantly as files are processed
+      </p>
+    </div>
+  );
+}
+
+//  Stat Card 
+
+function StatCard({ icon: Icon, label, value, sub, color = "text-primary" }: {
+  icon: any; label: string; value: string | number; sub?: string; color?: string;
+}) {
+  return (
+    <Card>
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</span>
+          <Icon className={cn("h-4 w-4", color)} />
+        </div>
+        <div className={cn("text-2xl font-bold", color)}>{value}</div>
+        {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+//  Tag Badge 
+
+function TagBadge({ tag }: { tag: string | null }) {
+  if (!tag) return <Badge variant="outline">-</Badge>;
+  const map: Record<string, string> = {
+    Strong: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+    Medium: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+    Reject: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  };
+  return (
+    <span className={cn("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium", map[tag] || "bg-secondary text-secondary-foreground")}>
+      {tag}
+    </span>
+  );
+}
+
+//  Main Component 
+
+export default function JobDetails() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+
+  // Core data
+  const [job, setJob] = useState<any>(null);
+  const [candidates, setCandidates] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Analytics
+  const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
+  const [rankings, setRankings] = useState<RankRow[]>([]);
+  const [skillGaps, setSkillGaps] = useState<SkillGapItem[]>([]);
+
+  // Quiz
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [generatingQuiz, setGeneratingQuiz] = useState(false);
+  const [quizDuration, setQuizDuration] = useState(15);
+  const [sendingQuiz, setSendingQuiz] = useState<string | null>(null);
+  const [magicLinks, setMagicLinks] = useState<{name: string, email: string, link: string}[]>([]);
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [quizQuestions, setQuizQuestions] = useState<Record<string, any[] | null>>({});
+  const [loadingQuestions, setLoadingQuestions] = useState<Record<string, boolean>>({});
+  const [quizMode, setQuizMode] = useState<'ai' | 'upload'>('ai');
+  const [uploadingQuiz, setUploadingQuiz] = useState(false);
+  const [quizFile, setQuizFile] = useState<File | null>(null);
+  const [quizFileDrag, setQuizFileDrag] = useState(false);
+  const [previewQuiz, setPreviewQuiz] = useState<string | null>(null); // quiz id being previewed
+
+  // Upload
+  const [files, setFiles] = useState<File[]>([]);
+  const [isParsing, setIsParsing] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [fileStatuses, setFileStatuses] = useState<Record<string, 'ready' | 'uploading' | 'done' | 'error' | 'duplicate'>>({});
+
+  // Edit / Close modals
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isCloseOpen, setIsCloseOpen] = useState(false);
+  const [editForm, setEditForm] = useState<any>({});
+  //  Raw string state for skills textareas  keeps commas intact while typing 
+  const [rawMustHave, setRawMustHave] = useState('');
+  const [rawGoodToHave, setRawGoodToHave] = useState('');
+
+  // Shortlisting
+    const [shortlisting, setShortlisting] = useState(false);
+  // Shortlist table pagination
+  const [slPage, setSlPage] = useState(1);
+  const [slPageSize, setSlPageSize] = useState(50);
+
+  // Pool Import
+  const [importPoolOpen, setImportPoolOpen] = useState(false);
+
+  // Analytics Rankings state
+  const [rankingsSearch, setRankingsSearch] = useState('');
+  const [rankingsPage, setRankingsPage] = useState(1);
+  const [rankingsPageSize, setRankingsPageSize] = useState(25);
+  const [rankingsTagFilter, setRankingsTagFilter] = useState<string>('all');
+  const [analyticsSubTab, setAnalyticsSubTab] = useState<'overview' | 'rankings' | 'skillgap'>('overview');
+
+  // Email State
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailDraft, setEmailDraft] = useState({ subject: "", body: "", candidateId: "", candidateName: "", toEmail: "" });
+  const [draftingEmail, setDraftingEmail] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+
+  const handleDraftEmail = async (c: any, type: 'invite' | 'reject' | 'offer') => {
+    setDraftingEmail(true);
+    toast.info(`AI is drafting ${type} email...`, { duration: 4000 });
+    try {
+      const data = await draftCandidateEmail(c.id, type);
+      setEmailDraft({ subject: data.subject, body: data.body, candidateId: c.id, candidateName: c.name, toEmail: c.email || "No email" });
+      setEmailModalOpen(true);
+    } catch {
+      toast.error("Failed to draft email. Ensure backend is running.");
+    } finally {
+      setDraftingEmail(false);
+    }
+  };
+
+  const handleSendDraftedEmail = async () => {
+    setSendingEmail(true);
+    try {
+      await sendCandidateEmail(emailDraft.candidateId, emailDraft.subject, emailDraft.body);
+      toast.success("Email successfully dispatched!");
+      setEmailModalOpen(false);
+    } catch {
+      toast.error("Failed to send email");
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  //  Load data 
+
+  // BUG FIX: Track isEditOpen in a ref so loadAll can read it without being
+  // in its dependency array. Having isEditOpen as a dep caused loadAll to get
+  // a new reference every time the edit dialog opened/closed, which triggered
+  // the useEffect to re-run a full data reload unnecessarily.
+  const isEditOpenRef = React.useRef(isEditOpen);
+  React.useEffect(() => { isEditOpenRef.current = isEditOpen; }, [isEditOpen]);
+
+  const [activeTab, setActiveTab] = useState('resumes');
+
+  const handleToggleQuestions = async (quizId: string) => {
+    if (quizQuestions[quizId] !== undefined && quizQuestions[quizId] !== null) {
+      setQuizQuestions(prev => ({ ...prev, [quizId]: null }));
+      return;
+    }
+    setLoadingQuestions(prev => ({ ...prev, [quizId]: true }));
+    try {
+      const qs = await getQuestions(quizId);
+      setQuizQuestions(prev => ({ ...prev, [quizId]: qs }));
+    } catch {
+      // toast imported above
+    } finally {
+      setLoadingQuestions(prev => ({ ...prev, [quizId]: false }));
+    }
+  };
+
+    const loadAll = useCallback(async (isBackground = false) => {
+    if (!id) return;
+    try {
+      const [jobData, candidatesData, quizzesData] = await Promise.all([
+        getJob(id),
+        getCandidates(id),
+        getQuizzes(id).catch(() => []),
+      ]);
+      setJob(jobData);
+      
+      // Only update editForm if the edit dialog is NOT open (prevents wiping user's in-progress edits)
+      if (!isBackground && !isEditOpenRef.current) {
+        setEditForm(jobData);
+      }
+      
+      setCandidates(candidatesData);
+      // BUG FIX: Use fresh quizzes data directly instead of merging with stale state.
+      // The previous merge pattern caused quizzes to accumulate on every reload.
+      setQuizzes(quizzesData);
+
+      if (candidatesData.length > 0) {
+        const [summaryData, rankingsData, gapsData] = await Promise.all([
+          getSummary(id).catch(() => null),
+          getRankings(id).catch(() => []),
+          getSkillGap(id).catch(() => []),
+        ]);
+        setSummary(summaryData);
+        setRankings(rankingsData);
+        setSkillGaps(gapsData);
+      }
+    } catch (error) {
+      if (!isBackground) {
+        toast.error("Job not found");
+        navigate("/jobs");
+      }
+    } finally {
+      if (!isBackground) setLoading(false);
+    }
+  }, [id, navigate]);
+
+  useEffect(() => { 
+    loadAll(); 
+  }, [loadAll]);
+
+  //  Resume Upload 
+
+  const handleParseAndRank = async () => {
+    if (!job || files.length === 0) return;
+    setIsParsing(true);
+
+    // Initialise all files as 'ready'
+    const initialStatuses: Record<string, 'ready' | 'uploading' | 'done' | 'error' | 'duplicate'> = {};
+    files.forEach(f => { initialStatuses[f.name + f.size] = 'ready'; });
+    setFileStatuses(initialStatuses);
+
+    let successCount = 0;
+    let failCount = 0;
+    let dupCount = 0;
+
+    // Upload files in batches of 5 — gives visual per-file progress without
+    // hammering the server with 33 simultaneous AI parse jobs
+    const BATCH = 5;
+    for (let i = 0; i < files.length; i += BATCH) {
+      const batch = files.slice(i, i + BATCH);
+
+      // Mark batch as uploading
+      setFileStatuses(prev => {
+        const next = { ...prev };
+        batch.forEach(f => { next[f.name + f.size] = 'uploading'; });
+        return next;
+      });
+
+      // Upload batch in parallel
+      await Promise.all(batch.map(async (file) => {
+        const key = file.name + file.size;
+        try {
+          const result = await uploadSingleResumeForJob(job.id, file);
+          const succeeded = result.success_count ?? (result.success?.length ?? 0);
+          const duped = result.duplicate_count ?? (result.skipped_duplicates?.length ?? 0);
+          if (duped > 0 && succeeded === 0) {
+            setFileStatuses(prev => ({ ...prev, [key]: 'duplicate' }));
+            dupCount++;
+          } else {
+            setFileStatuses(prev => ({ ...prev, [key]: 'done' }));
+            successCount += succeeded;
+          }
+        } catch {
+          setFileStatuses(prev => ({ ...prev, [key]: 'error' }));
+          failCount++;
+        }
+      }));
+    }
+
+    // Reload data after all done
+    await loadAll();
+    setIsParsing(false);
+
+    if (successCount > 0) {
+      toast.success(`Parsed ${successCount} resume${successCount > 1 ? 's' : ''}`, {
+        description: [
+          failCount > 0 ? `${failCount} failed` : '',
+          dupCount > 0 ? `${dupCount} duplicate${dupCount > 1 ? 's' : ''} skipped` : '',
+        ].filter(Boolean).join(' · ') || 'All processed successfully',
+      });
+    } else if (dupCount > 0 && failCount === 0) {
+      toast.info(`All ${dupCount} file${dupCount > 1 ? 's' : ''} were duplicates — already uploaded`);
+    } else {
+      toast.error('No resumes were processed', { description: 'Check files and try again' });
+    }
+
+    // Clear queue after a short delay so user can see final statuses
+    setTimeout(() => { setFiles([]); setFileStatuses({}); }, 2000);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
+  const handleDragLeave = () => setIsDragging(false);
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setIsDragging(false);
+    if (e.dataTransfer.files?.length) setFiles(Array.from(e.dataTransfer.files));
+  };
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.length) setFiles(Array.from(e.target.files));
+  };
+
+  //  Shortlisting 
+
+  const handleShortlist = async () => {
+    if (!job) return;
+    setShortlisting(true);
+    try {
+      await shortlistCandidates(job.id);
+      toast.success("Shortlisting complete");
+      await loadAll();
+    } catch {
+      toast.error("Shortlisting failed");
+    } finally {
+      setShortlisting(false);
+    }
+  };
+
+  //  Quiz 
+
+  const handleGenerateQuiz = async () => {
+    if (!job) return;
+    setGeneratingQuiz(true);
+    toast.info("Generating 20 MCQ questions with AI...");
+    try {
+      const quiz = await generateQuiz(job.id, undefined, quizDuration);
+      setQuizzes(prev => prev.some(q => q.id === quiz.id) ? prev : [quiz, ...prev]);
+      toast.success(`Quiz created: "${quiz.title}" (${quiz.question_count} questions)`);
+      await loadAll();
+    } catch {
+      toast.error("Failed to generate quiz");
+    } finally {
+      setGeneratingQuiz(false);
+    }
+  };
+
+  const handleUploadQuiz = async () => {
+    if (!job || !quizFile) return;
+    setUploadingQuiz(true);
+    toast.info(`Parsing "${quizFile.name}" with AI…`);
+    try {
+      const quiz = await uploadQuizFromFile(job.id, quizFile, quizDuration);
+      setQuizzes(prev => prev.some(q => q.id === quiz.id) ? prev : [quiz, ...prev]);
+      toast.success(`Quiz created: "${quiz.title}" (${quiz.question_count} questions)`);
+      setQuizFile(null);
+      setQuizMode('ai');
+      await loadAll();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || "Failed to parse question paper");
+    } finally {
+      setUploadingQuiz(false);
+    }
+  };
+
+  const handleSendQuizToAll = async (quizId: string) => {
+    const shortlisted = candidates.filter((c: any) => c.tag?.toLowerCase() === 'strong' || c.tag?.toLowerCase() === 'medium');
+    if (shortlisted.length === 0) {
+      toast.error("No shortlisted candidates to send quiz to");
+      return;
+    }
+    setSendingQuiz(quizId);
+    try {
+      const result = await sendQuizLinks(shortlisted.map((c: any) => c.id), quizId);
+      toast.success(`Quiz links sent to ${shortlisted.length} candidates`);
+      
+      // Restore the missing trigger for the Magic Links Modal
+      const links = result?.links || result?.magic_links || (Array.isArray(result) ? result : []);
+      setMagicLinks(Array.isArray(links) ? links : []);
+      setIsLinkModalOpen(true);
+    } catch {
+      toast.error("Failed to send quiz links");
+    } finally {
+      setSendingQuiz(null);
+    }
+  };
+
+  //  Job Edit   Close 
+
+  const handleEditSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    try {
+      const payload = {
+        ...editForm,
+        must_have_skills: rawMustHave.split(',').map((s: string) => s.trim()).filter(Boolean),
+        good_to_have_skills: rawGoodToHave.split(',').map((s: string) => s.trim()).filter(Boolean),
+      };
+      const updated = await updateJob(job.id, payload);
+      setJob(updated);
+      setIsEditOpen(false);
+      toast.success("Job updated");
+    } catch { toast.error("Failed to update job"); }
+  };
+
+  const handleCloseJob = async () => {
+    try {
+      await closeJob(job.id);
+      setJob({ ...job, is_active: false });
+      setIsCloseOpen(false);
+      toast.success("Job closed");
+    } catch { toast.error("Failed to close job"); }
+  };
+
+  //  Exports 
+
+  const handleExportExcel = async () => {
+    try { await exportExcel(id!); toast.success("Excel report downloaded"); }
+    catch { toast.error("Export failed"); }
+  };
+
+  const handleExportPDF = async () => {
+    try { await exportPDF(id!); toast.success("PDF report downloaded"); }
+    catch { toast.error("Export failed"); }
+  };
+
+  //  Loading 
+
+  if (loading || !job) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
+
+  const shortlistedCount = candidates.filter((c: any) => c.tag?.toLowerCase() === 'strong' || c.tag?.toLowerCase() === 'medium').length;
+  const testedCount = candidates.filter((c: any) => c.quiz_score != null).length;
+
+  // 
+
+  return (
+    <div className="space-y-6">
+      {/*  Header  */}
+      <div className="flex items-start gap-4">
+        <Button asChild variant="ghost" size="icon" className="mt-1">
+          <Link to="/jobs"><ArrowLeft className="h-4 w-4" /></Link>
+        </Button>
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-3xl font-bold tracking-tight truncate">{job.title}</h2>
+            <Badge variant={job.is_active ? "default" : "secondary"}>
+              {job.is_active ? "Active" : "Closed"}
+            </Badge>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 mt-1">
+            <Badge variant="outline">{job.employment_type || "Full-time"}</Badge>
+            <Badge variant="outline">{job.location || "Remote"}</Badge>
+            <Badge variant="outline">{job.experience_min}–{job.experience_max} yrs exp</Badge>
+            <span className="text-sm text-muted-foreground">
+              Posted {new Date(job.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+            </span>
+          </div>
+        </div>
+        <div className="flex gap-2 shrink-0">
+          {/*  Edit  */}
+          <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" onClick={() => {
+                setEditForm(job);
+                setRawMustHave(Array.isArray(job.must_have_skills) ? job.must_have_skills.join(', ') : (job.must_have_skills || ''));
+                setRawGoodToHave(Array.isArray(job.good_to_have_skills) ? job.good_to_have_skills.join(', ') : (job.good_to_have_skills || ''));
+              }}>
+                <Pencil className="mr-2 h-4 w-4" /> Edit
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[620px] max-h-[90vh] flex flex-col p-0 gap-0">
+              {/*  Fixed header  */}
+              <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
+                <DialogTitle className="text-lg font-semibold">Edit Job</DialogTitle>
+                <DialogDescription className="text-sm">Update job details and save changes.</DialogDescription>
+              </DialogHeader>
+
+              {/*  Scrollable body  */}
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+                {/*  Row 1  Title   Type  */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Job Title</Label>
+                    <Input
+                      value={editForm.title || ""}
+                      onChange={e => setEditForm({ ...editForm, title: e.target.value })}
+                      className="h-9"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Employment Type</Label>
+                    <Select value={editForm.employment_type || "Full-time"} onValueChange={v => setEditForm({ ...editForm, employment_type: v })}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Full-time">Full-time</SelectItem>
+                        <SelectItem value="Part-time">Part-time</SelectItem>
+                        <SelectItem value="Contract">Contract</SelectItem>
+                        <SelectItem value="Freelance">Freelance</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/*  Row 2  Location  */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Location</Label>
+                  <Input
+                    value={editForm.location || ""}
+                    onChange={e => setEditForm({ ...editForm, location: e.target.value })}
+                    className="h-9"
+                    placeholder="e.g. Remote, New York, London"
+                  />
+                </div>
+
+                {/*  Row 3  Experience range  */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Min Experience (yrs)</Label>
+                    <Input type="number" className="h-9" value={editForm.experience_min ?? 0} onChange={e => setEditForm({ ...editForm, experience_min: Number(e.target.value) })} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Max Experience (yrs)</Label>
+                    <Input type="number" className="h-9" value={editForm.experience_max ?? 10} onChange={e => setEditForm({ ...editForm, experience_max: Number(e.target.value) })} />
+                  </div>
+                </div>
+
+                {/*  Row 4  Must Have Skills  */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-red-500 shrink-0" />
+                    <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Must-Have Skills</Label>
+                    <span className="text-xs text-muted-foreground ml-auto">comma separated</span>
+                  </div>
+                  <Textarea
+                    className="min-h-[72px] resize-none text-sm leading-relaxed"
+                    value={rawMustHave}
+                    onChange={e => setRawMustHave(e.target.value)}
+                    placeholder="React, TypeScript, Node.js, PostgreSQL"
+                  />
+                  {/*  Live pill preview  */}
+                  {rawMustHave.split(',').map(s => s.trim()).filter(Boolean).length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {rawMustHave.split(',').map(s => s.trim()).filter(Boolean).map((s: string) => (
+                        <span key={s} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-800">
+                          <span className="h-1.5 w-1.5 rounded-full bg-red-500 shrink-0" />{s}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/*  Row 5  Good to Have Skills  */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-blue-500 shrink-0" />
+                    <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Good-to-Have Skills</Label>
+                    <span className="text-xs text-muted-foreground ml-auto">comma separated</span>
+                  </div>
+                  <Textarea
+                    className="min-h-[60px] resize-none text-sm leading-relaxed"
+                    value={rawGoodToHave}
+                    onChange={e => setRawGoodToHave(e.target.value)}
+                    placeholder="AWS, Docker, GraphQL, Redis"
+                  />
+                  {/*  Live pill preview  */}
+                  {rawGoodToHave.split(',').map(s => s.trim()).filter(Boolean).length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {rawGoodToHave.split(',').map(s => s.trim()).filter(Boolean).map((s: string) => (
+                        <span key={s} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-800">
+                          <span className="h-1.5 w-1.5 rounded-full bg-blue-400 shrink-0" />{s}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/*  Row 6  Description  */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</Label>
+                  <Textarea className="min-h-[130px] text-sm leading-relaxed" value={editForm.description || ""} onChange={e => setEditForm({ ...editForm, description: e.target.value })} />
+                </div>
+              </div>
+
+              {/*  Fixed footer  */}
+              <div className="px-6 py-4 border-t bg-muted/30 shrink-0 flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
+                <Button onClick={handleEditSubmit}>Save Changes</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/*  Close Job  */}
+          <Dialog open={isCloseOpen} onOpenChange={setIsCloseOpen}>
+            <DialogTrigger asChild>
+              <Button variant="destructive" size="sm" disabled={!job.is_active}>
+                <XCircle className="mr-2 h-4 w-4" />
+                {job.is_active ? "Close Job" : "Closed"}
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Close Job Posting?</DialogTitle>
+                <DialogDescription>This will archive the job and stop new applications.</DialogDescription>
+              </DialogHeader>
+              <div className="flex items-center gap-4 py-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-600">
+                  <AlertTriangle className="h-6 w-6" />
+                </div>
+                <p className="text-sm text-muted-foreground">This action cannot be undone.</p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsCloseOpen(false)}>Cancel</Button>
+                <Button variant="destructive" onClick={handleCloseJob}>Yes, Close Job</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      {/*  Pipeline Summary Strip  */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <StatCard icon={Users} label="Total Applied" value={candidates.length} sub="Resumes uploaded" />
+        <StatCard icon={Star} label="Shortlisted" value={shortlistedCount}
+          sub={`${candidates.length ? Math.round(shortlistedCount / candidates.length * 100) : 0}% of applicants`}
+          color="text-emerald-600" />
+        <StatCard icon={BrainCircuit} label="Quiz Taken" value={testedCount}
+          sub={`${shortlistedCount ? Math.round(testedCount / (shortlistedCount || 1) * 100) : 0}% of shortlisted`}
+          color="text-blue-600" />
+        <StatCard icon={Trophy} label="Passed" value={summary?.pass_count ?? 0}
+          sub={`${summary?.avg_final_score ? `Avg ${summary.avg_final_score.toFixed(1)}%` : "No final scores yet"}`}
+          color="text-amber-600" />
+      </div>
+
+      {/*  Tabs  */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className="grid grid-cols-4 w-full max-w-xl">
+          <TabsTrigger value="resumes"><Upload className="mr-2 h-4 w-4" />Resumes</TabsTrigger>
+          <TabsTrigger value="shortlist"><Target className="mr-2 h-4 w-4" />Shortlist</TabsTrigger>
+          <TabsTrigger value="quiz"><BrainCircuit className="mr-2 h-4 w-4" />Quiz</TabsTrigger>
+          <TabsTrigger value="analytics"><BarChart3 className="mr-2 h-4 w-4" />Analytics</TabsTrigger>
+        </TabsList>
+
+        {/*  TAB 1  RESUME UPLOAD  */}
+        <TabsContent value="resumes" className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-3">
+            {/*  Upload Zone  */}
+            <Card className="md:col-span-2">
+              <CardHeader>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <CardTitle>Upload Resumes</CardTitle>
+                    <CardDescription>Drag &amp; drop or click to upload. AI will parse and score each resume automatically.</CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 border-emerald-400 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:border-emerald-700 dark:hover:bg-emerald-950/30"
+                    onClick={() => setImportPoolOpen(true)}
+                  >
+                    <Layers className="mr-2 h-4 w-4" />
+                    Import from Pool
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div
+                  className={cn(
+                    "border-2 border-dashed rounded-lg p-10 text-center cursor-pointer transition-colors",
+                    isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
+                  )}
+                  onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
+                  onClick={() => document.getElementById('file-upload-jd')?.click()}
+                >
+                  <input id="file-upload-jd" type="file" multiple className="hidden" accept=".pdf,.doc,.docx" onChange={handleFileChange} />
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="p-3 rounded-full bg-primary/10 text-primary">
+                      <Upload className="h-7 w-7" />
+                    </div>
+                    <div>
+                      <p className="font-medium">Drop resumes here or click to upload</p>
+                      <p className="text-sm text-muted-foreground">PDF, DOC, DOCX | Max 10MB each | Up to 50 files</p>
+                    </div>
+                  </div>
+                </div>
+
+                {files.length > 0 && (() => {
+                  const allDone = files.every(f => {
+                    const s = fileStatuses[f.name + f.size];
+                    return s === 'done' || s === 'error' || s === 'duplicate';
+                  });
+                  const doneCount = files.filter(f => fileStatuses[f.name + f.size] === 'done').length;
+                  const totalParsed = Object.values(fileStatuses).filter(s => s === 'done').length;
+
+                  return (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium">
+                        {isParsing
+                          ? `Parsing ${totalParsed} / ${files.length} file${files.length > 1 ? 's' : ''}…`
+                          : `${files.length} file${files.length > 1 ? 's' : ''} ready`}
+                      </p>
+                      {!isParsing && (
+                        <Button variant="ghost" size="sm" onClick={() => { setFiles([]); setFileStatuses({}); }}>Clear all</Button>
+                      )}
+                    </div>
+
+                    {/* Overall progress bar — only visible while parsing */}
+                    {isParsing && (
+                      <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-primary rounded-full transition-all duration-500"
+                          style={{ width: `${files.length > 0 ? (Object.values(fileStatuses).filter(s => s !== 'ready' && s !== 'uploading').length / files.length) * 100 : 0}%` }}
+                        />
+                      </div>
+                    )}
+
+                    <div className="max-h-52 overflow-y-auto space-y-1.5 pr-0.5">
+                      {files.map((f, i) => {
+                        const key = f.name + f.size;
+                        const status = fileStatuses[key] ?? 'ready';
+                        return (
+                          <div key={i} className={`flex items-center justify-between p-2.5 rounded border text-sm transition-colors ${
+                            status === 'done'      ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800' :
+                            status === 'error'     ? 'bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-800' :
+                            status === 'duplicate' ? 'bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800' :
+                            status === 'uploading' ? 'bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800' :
+                            'bg-muted/40'
+                          }`}>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <FileText className={`h-4 w-4 shrink-0 ${
+                                status === 'done'      ? 'text-emerald-500' :
+                                status === 'error'     ? 'text-red-400' :
+                                status === 'duplicate' ? 'text-amber-500' :
+                                status === 'uploading' ? 'text-blue-500' :
+                                'text-muted-foreground'
+                              }`} />
+                              <span className="truncate max-w-[200px]">{f.name}</span>
+                              <span className="text-xs text-muted-foreground shrink-0">({(f.size / 1024 / 1024).toFixed(2)} MB)</span>
+                            </div>
+                            <div className="shrink-0 ml-2">
+                              {status === 'ready' && (
+                                <Badge variant="secondary" className="text-xs">Ready</Badge>
+                              )}
+                              {status === 'uploading' && (
+                                <div className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 font-medium">
+                                  <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                                  Parsing…
+                                </div>
+                              )}
+                              {status === 'done' && (
+                                <div className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>
+                                  Done
+                                </div>
+                              )}
+                              {status === 'error' && (
+                                <div className="flex items-center gap-1 text-xs text-red-500 font-medium">
+                                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12"/></svg>
+                                  Failed
+                                </div>
+                              )}
+                              {status === 'duplicate' && (
+                                <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-medium">
+                                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                  Duplicate
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <Button onClick={handleParseAndRank} disabled={isParsing} className="w-full">
+                      {isParsing
+                        ? <><div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />Parsing {Object.values(fileStatuses).filter(s => s === 'uploading').length > 0 ? `batch…` : '…'}</>
+                        : <><BrainCircuit className="mr-2 h-4 w-4" />Parse & Rank {files.length} Resume{files.length > 1 ? "s" : ""}</>
+                      }
+                    </Button>
+                  </div>
+                  );
+                })()}
+
+                {/* ── Candidate Intelligence / Upload Guide ────────────── */}
+                {candidates.length > 0
+                  ? <CandidateIntelligencePanel candidates={candidates} navigate={navigate} />
+                  : <UploadReadyState />
+                }
+              </CardContent>
+            </Card>
+
+            {/*  JD Skills  */}
+            <div className="space-y-4">
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-red-500" />
+                    <CardTitle className="text-sm font-semibold text-foreground">Must-Have Skills</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2">
+                    {(job.must_have_skills || []).length === 0
+                      ? <p className="text-sm text-muted-foreground">None specified</p>
+                      : job.must_have_skills.map((s: string) => (
+                          <span
+                            key={s}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-800"
+                          >
+                            <span className="h-1.5 w-1.5 rounded-full bg-red-500 shrink-0" />
+                            {s}
+                          </span>
+                        ))
+                    }
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-blue-500" />
+                    <CardTitle className="text-sm font-semibold text-foreground">Good-to-Have Skills</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2">
+                    {(job.good_to_have_skills || []).length === 0
+                      ? <p className="text-sm text-muted-foreground">None specified</p>
+                      : job.good_to_have_skills.map((s: string) => (
+                          <span
+                            key={s}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-800"
+                          >
+                            <span className="h-1.5 w-1.5 rounded-full bg-blue-400 shrink-0" />
+                            {s}
+                          </span>
+                        ))
+                    }
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                    <CardTitle className="text-sm font-semibold text-foreground">Scoring Config</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-2.5 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Resume Weight</span>
+                    <span className="font-semibold tabular-nums text-foreground">{job.resume_weight}%</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Quiz Weight</span>
+                    <span className="font-semibold tabular-nums text-foreground">{job.quiz_weight}%</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Pass Threshold</span>
+                    <span className="font-semibold tabular-nums text-foreground">{job.pass_threshold}%</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/*  TAB 2  SHORTLIST  */}
+        <TabsContent value="shortlist" className="flex flex-col gap-4 min-h-0" style={{height: 'calc(100vh - 19rem)'}}>
+          {/*  Header row  */}
+          <div className="flex items-center justify-between shrink-0">
+            <div>
+              <h3 className="text-lg font-semibold">Candidate Shortlist</h3>
+              <p className="text-sm text-muted-foreground">
+                {candidates.length} total | {shortlistedCount} shortlisted
+              </p>
+            </div>
+            <Button onClick={handleShortlist} disabled={shortlisting || candidates.length === 0} variant="outline">
+              {shortlisting
+                ? <><div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />Re-running...</>
+                : <><RefreshCw className="mr-2 h-4 w-4" />Re-run Shortlisting</>
+              }
+            </Button>
+          </div>
+
+          {candidates.length === 0 ? (
+            <Card className="p-12 text-center shrink-0">
+              <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+              <p className="font-medium">No candidates yet</p>
+              <p className="text-sm text-muted-foreground">Upload resumes in the Resumes tab first.</p>
+            </Card>
+          ) : (() => {
+            //  Derived pagination values  computed inline so we don t need extra state 
+            const sorted = [...candidates].sort((a: any, b: any) => b.resume_score - a.resume_score);
+            const slTotalPages  = Math.max(1, Math.ceil(sorted.length / slPageSize));
+            const slClampedPage = Math.min(slPage, slTotalPages);
+            const slStart       = (slClampedPage - 1) * slPageSize;
+            const slEnd         = Math.min(slStart + slPageSize, sorted.length);
+            const slPageData    = sorted.slice(slStart, slEnd);
+
+            function buildPgNums(total: number, cur: number): (number | '')[] {
+              if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+              const out: (number | '')[] = [1];
+              if (cur > 3) out.push('');
+              for (let p = Math.max(2, cur - 1); p <= Math.min(total - 1, cur + 1); p++) out.push(p);
+              if (cur < total - 2) out.push('');
+              out.push(total);
+              return out;
+            }
+
+            return (
+              <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                {/*  Scrollable table area  */}
+                <div className="flex-1 overflow-y-auto">
+                  <Table>
+                    <TableHeader className="bg-muted/30 sticky top-0 z-10">
+                      <TableRow>
+                        <TableHead className="py-3 font-semibold text-xs uppercase tracking-wide">Candidate</TableHead>
+                        <TableHead className="py-3 font-semibold text-xs uppercase tracking-wide">Skills Match</TableHead>
+                        <TableHead className="py-3 font-semibold text-xs uppercase tracking-wide">Experience</TableHead>
+                        <TableHead className="py-3 font-semibold text-xs uppercase tracking-wide">Resume Score</TableHead>
+                        <TableHead className="py-3 font-semibold text-xs uppercase tracking-wide">Tag</TableHead>
+                        <TableHead className="text-right py-3 font-semibold text-xs uppercase tracking-wide">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {slPageData.map((c: any) => (
+                        <TableRow key={c.id} className="hover:bg-muted/30 transition-colors">
+                          <TableCell>
+                            <div className="font-medium">{c.name || "Unknown"}</div>
+                            <div className="text-xs text-muted-foreground">{c.email || "-"}</div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Progress value={c.skill_match_pct} className="h-1.5 w-16" />
+                              <span className="text-xs font-mono">{c.skill_match_pct?.toFixed(0)}%</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm">{c.experience_years} yrs</span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Progress value={c.resume_score} className="h-1.5 w-16" />
+                              <span className="text-xs font-mono font-bold">{c.resume_score?.toFixed(1)}%</span>
+                            </div>
+                          </TableCell>
+                          <TableCell><TagBadge tag={c.tag} /></TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4" /></Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-48">
+                                <DropdownMenuItem asChild>
+                                  <Link to={`/candidates/${c.id}`} className="cursor-pointer">View Full Profile</Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => handleDraftEmail(c, 'invite')} disabled={draftingEmail} className="cursor-pointer">
+                                  <Mail className="mr-2 h-4 w-4 text-blue-500" /> AI Draft Invite
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleDraftEmail(c, 'offer')} disabled={draftingEmail} className="cursor-pointer">
+                                  <Star className="mr-2 h-4 w-4 text-amber-500" /> AI Draft Offer Letter
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleDraftEmail(c, 'reject')} disabled={draftingEmail} className="cursor-pointer text-red-600 focus:bg-red-50 focus:text-red-700">
+                                  <XCircle className="mr-2 h-4 w-4" /> AI Draft Rejection
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/*  Pagination bar  pinned at bottom of card  */}
+                <div className="flex items-center justify-between gap-4 px-4 py-3 border-t bg-muted/20 shrink-0">
+                  {/*  Range info  */}
+                  <p className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                    <span className="font-semibold text-foreground">{slStart + 1}{slEnd}</span>
+                    {' '}of{' '}
+                    <span className="font-semibold text-foreground">{sorted.length}</span>
+                  </p>
+
+                  {/*  Page buttons  */}
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg" disabled={slClampedPage === 1} onClick={() => setSlPage(1)}>
+                      <ChevronsLeft className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg" disabled={slClampedPage === 1} onClick={() => setSlPage(p => Math.max(1, p - 1))}>
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </Button>
+                    {buildPgNums(slTotalPages, slClampedPage).map((p, i) =>
+                      p === '' ? (
+                        <span key={`e${i}`} className="px-1 text-xs text-muted-foreground"></span>
+                      ) : (
+                        <Button key={p} variant={p === slClampedPage ? 'default' : 'ghost'} size="icon"
+                          className="h-7 w-7 rounded-lg text-xs font-medium"
+                          onClick={() => setSlPage(p as number)}>
+                          {p}
+                        </Button>
+                      )
+                    )}
+                    <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg" disabled={slClampedPage === slTotalPages} onClick={() => setSlPage(p => Math.min(slTotalPages, p + 1))}>
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg" disabled={slClampedPage === slTotalPages} onClick={() => setSlPage(slTotalPages)}>
+                      <ChevronsRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+
+                  {/*  Page size  */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-muted-foreground">Rows</span>
+                    <div className="flex items-center border border-border/60 rounded-lg overflow-hidden">
+                      {[25, 50, 100, 200].map(n => (
+                        <button
+                          key={n}
+                          onClick={() => { setSlPageSize(n); setSlPage(1); }}
+                          className={`px-2.5 py-1 text-xs font-medium transition-colors border-r border-border/40 last:border-r-0 ${
+                            slPageSize === n
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            );
+          })()}
+        </TabsContent>
+
+        {/*  TAB 3  QUIZ  */}
+        <TabsContent value="quiz" className="space-y-5">
+
+          {/* ── Creation card ─────────────────────────────────────────────── */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">Create Assessment</CardTitle>
+                  <CardDescription className="text-xs mt-0.5">
+                    AI-generate questions from this JD, or upload your own question paper.
+                  </CardDescription>
+                </div>
+                {/* Mode toggle */}
+                <div className="flex gap-1 p-1 bg-muted rounded-lg border border-border/50">
+                  <button
+                    onClick={() => setQuizMode('ai')}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                      quizMode === 'ai'
+                        ? "bg-background text-foreground shadow-sm border border-border/50"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <Zap className="h-3.5 w-3.5" /> AI Generate
+                  </button>
+                  <button
+                    onClick={() => setQuizMode('upload')}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                      quizMode === 'upload'
+                        ? "bg-background text-foreground shadow-sm border border-border/50"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <FileUp className="h-3.5 w-3.5" /> Upload paper
+                  </button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Duration (shared) */}
+              <div className="flex items-center gap-3">
+                <label className="text-xs text-muted-foreground font-medium whitespace-nowrap">Duration (minutes)</label>
+                <Input
+                  type="number" min="5" max="180"
+                  className="w-24 h-8 text-sm"
+                  value={quizDuration}
+                  onChange={e => setQuizDuration(Number(e.target.value))}
+                  disabled={generatingQuiz || uploadingQuiz}
+                />
+              </div>
+
+              {quizMode === 'ai' ? (
+                /* AI mode */
+                <div className="flex items-center justify-between p-4 rounded-xl bg-muted/30 border border-border/50">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">20 questions auto-generated</p>
+                    <p className="text-xs text-muted-foreground">8 Easy · 8 Medium · 4 Hard — based on JD skills</p>
+                  </div>
+                  <Button onClick={handleGenerateQuiz} disabled={generatingQuiz} className="shrink-0">
+                    {generatingQuiz
+                      ? <><div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />Generating…</>
+                      : <><Zap className="mr-2 h-4 w-4" />Generate</>
+                    }
+                  </Button>
+                </div>
+              ) : (
+                /* Upload mode */
+                <div className="space-y-3">
+                  <div
+                    onDragOver={e => { e.preventDefault(); setQuizFileDrag(true); }}
+                    onDragLeave={() => setQuizFileDrag(false)}
+                    onDrop={e => {
+                      e.preventDefault();
+                      setQuizFileDrag(false);
+                      const f = e.dataTransfer.files[0];
+                      if (f) setQuizFile(f);
+                    }}
+                    className={cn(
+                      "relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-8 text-center transition-colors cursor-pointer",
+                      quizFileDrag
+                        ? "border-primary bg-primary/5"
+                        : quizFile
+                          ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/10"
+                          : "border-border hover:border-primary/50 hover:bg-muted/30"
+                    )}
+                    onClick={() => document.getElementById('quiz-file-input')?.click()}
+                  >
+                    <input
+                      id="quiz-file-input"
+                      type="file"
+                      accept=".pdf,.docx,.doc,.txt"
+                      className="hidden"
+                      onChange={e => e.target.files?.[0] && setQuizFile(e.target.files[0])}
+                    />
+                    {quizFile ? (
+                      <>
+                        <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                          <Check className="h-5 w-5 text-emerald-600" />
+                        </div>
+                        <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">{quizFile.name}</p>
+                        <p className="text-xs text-muted-foreground">{(quizFile.size / 1024).toFixed(0)} KB · Click to change</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
+                          <FileUp className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <p className="text-sm font-medium">Drop your question paper here</p>
+                        <p className="text-xs text-muted-foreground">PDF, DOCX, DOC or TXT · AI extracts all MCQs automatically</p>
+                      </>
+                    )}
+                  </div>
+                  <Button
+                    className="w-full"
+                    onClick={handleUploadQuiz}
+                    disabled={!quizFile || uploadingQuiz}
+                  >
+                    {uploadingQuiz
+                      ? <><div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />Parsing questions…</>
+                      : <><FileUp className="mr-2 h-4 w-4" />Upload & Parse</>
+                    }
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* ── No quizzes empty state ─────────────────────────────────────── */}
+          {quizzes.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-12 text-center border border-dashed rounded-xl text-muted-foreground">
+              <BookOpen className="h-10 w-10 opacity-20 mb-3" />
+              <p className="text-sm font-medium">No quizzes yet</p>
+              <p className="text-xs mt-0.5">Generate with AI or upload a question paper above.</p>
+            </div>
+          )}
+
+          {/* ── Quiz cards ────────────────────────────────────────────────── */}
+          {quizzes.map((quiz) => (
+            <Card key={quiz.id} className="overflow-hidden">
+              <CardHeader className="pb-3 border-b border-border/50">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="text-base leading-snug">{quiz.title}</CardTitle>
+                    <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1"><BookOpen className="h-3 w-3" />{quiz.question_count} questions</span>
+                      <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{quiz.duration_minutes} min</span>
+                      <span>{new Date(quiz.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                    </div>
+                  </div>
+                  <Badge variant={quiz.is_active ? "default" : "secondary"} className="shrink-0 text-xs">
+                    {quiz.is_active ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-4 space-y-4">
+                {/* Difficulty pills */}
+                <div className="flex gap-2">
+                  {[
+                    { label: "Easy", count: 8, color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
+                    { label: "Medium", count: 8, color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
+                    { label: "Hard", count: 4, color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
+                  ].map(d => (
+                    <span key={d.label} className={cn("inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold", d.color)}>
+                      {d.count} {d.label}
+                    </span>
+                  ))}
+                </div>
+
+                {/* Actions row */}
+                <div className="flex flex-wrap gap-2">
+                  {/* Show Quiz — preview modal */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (!quizQuestions[quiz.id]) handleToggleQuestions(quiz.id);
+                      setPreviewQuiz(quiz.id);
+                    }}
+                    disabled={loadingQuestions[quiz.id]}
+                    className="gap-1.5"
+                  >
+                    {loadingQuestions[quiz.id]
+                      ? <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      : <Eye className="h-3.5 w-3.5" />
+                    }
+                    Show Quiz
+                  </Button>
+
+                  {/* Share via magic link */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleSendQuizToAll(quiz.id)}
+                    disabled={sendingQuiz === quiz.id || shortlistedCount === 0}
+                    className="gap-1.5"
+                  >
+                    {sendingQuiz === quiz.id
+                      ? <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      : <Link2 className="h-3.5 w-3.5" />
+                    }
+                    Share magic link
+                    {shortlistedCount > 0 && (
+                      <span className="ml-0.5 px-1.5 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded-full">{shortlistedCount}</span>
+                    )}
+                  </Button>
+
+                  {/* Send to shortlisted (existing primary action) */}
+                  <Button
+                    size="sm"
+                    onClick={() => handleSendQuizToAll(quiz.id)}
+                    disabled={sendingQuiz === quiz.id || shortlistedCount === 0}
+                    className="ml-auto gap-1.5"
+                  >
+                    {sendingQuiz === quiz.id
+                      ? <><div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />Sending…</>
+                      : <><Send className="h-3.5 w-3.5" />Send to {shortlistedCount} shortlisted</>
+                    }
+                  </Button>
+                </div>
+
+                {shortlistedCount === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-1 border border-dashed rounded-lg">
+                    Shortlist candidates first (in the Shortlist tab) before sending quiz links.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+
+          {/*  Scoring breakdown info  */}
+          <Card className="bg-muted/20">
+            <CardContent className="pt-6">
+              <h4 className="font-semibold mb-3 flex items-center gap-2">
+                <TrendingUp className="h-4 w-4" /> Scoring Formula
+              </h4>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="space-y-1">
+                  <p className="text-muted-foreground">Max Quiz Score</p>
+                  <p className="font-bold text-lg">36 points</p>
+                  <p className="text-xs text-muted-foreground">8 x 1 + 8 x 2 + 4 x 3 = 36</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-muted-foreground">Final Score</p>
+                  <p className="font-bold text-lg">Weighted</p>
+                  <p className="text-xs text-muted-foreground">Resume {job.resume_weight}% + Quiz {job.quiz_weight}%</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/*  TAB 4  ANALYTICS  */}
+        <TabsContent value="analytics" className="space-y-4">
+          {/*  Top bar  export   sub tab nav  */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex gap-1 p-1 bg-muted rounded-lg w-fit">
+              {(['overview', 'rankings', 'skillgap'] as const).map((tab) => {
+                const labels: Record<string, string> = { overview: ' Overview', rankings: ' Rankings', skillgap: ' Skill Gap' };
+                return (
+                  <button
+                    key={tab}
+                    onClick={() => setAnalyticsSubTab(tab)}
+                    className={cn(
+                      "px-4 py-1.5 rounded-md text-sm font-medium transition-all",
+                      analyticsSubTab === tab
+                        ? "bg-background shadow text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {labels[tab]}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleExportExcel}>
+                <Download className="mr-2 h-4 w-4" /> Excel
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleExportPDF}>
+                <Download className="mr-2 h-4 w-4" /> PDF
+              </Button>
+            </div>
+          </div>
+
+          {!summary ? (
+            <Card className="p-12 text-center">
+              <BarChart3 className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+              <p className="font-medium">No analytics yet</p>
+              <p className="text-sm text-muted-foreground">Upload and process resumes to see analytics.</p>
+            </Card>
+          ) : (
+            <>
+              {/*  OVERVIEW  */}
+              {analyticsSubTab === 'overview' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    <StatCard icon={Users} label="Total" value={summary.total_applicants} />
+                    <StatCard icon={CheckCircle2} label="Shortlisted" value={`${summary.shortlisted_pct.toFixed(1)}%`} sub={`${summary.shortlisted_count} candidates`} color="text-emerald-600" />
+                    <StatCard icon={Target} label="Avg Resume" value={`${summary.avg_resume_score.toFixed(1)}%`} color="text-blue-600" />
+                    <StatCard icon={BrainCircuit} label="Avg Quiz" value={summary.avg_quiz_score != null ? `${summary.avg_quiz_score.toFixed(1)}/36` : "N/A"} color="text-purple-600" />
+                    <StatCard icon={Trophy} label="Pass Rate" value={summary.pass_count + summary.fail_count > 0 ? `${Math.round(summary.pass_count / (summary.pass_count + summary.fail_count) * 100)}%` : "N/A"} sub={`${summary.pass_count} passed`} color="text-amber-600" />
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-base">Candidate Distribution</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {[
+                          { label: "Strong", count: summary.strong_count, color: "bg-emerald-500", textColor: "text-emerald-700 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/30" },
+                          { label: "Medium", count: summary.medium_count, color: "bg-amber-500", textColor: "text-amber-700 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-950/30" },
+                          { label: "Reject", count: summary.reject_count, color: "bg-red-400", textColor: "text-red-700 dark:text-red-400", bg: "bg-red-50 dark:bg-red-950/30" },
+                        ].map(t => {
+                          const pct = summary.total_applicants ? Math.round(t.count / summary.total_applicants * 100) : 0;
+                          return (
+                            <div key={t.label} className="space-y-1.5">
+                              <div className="flex items-center justify-between text-sm">
+                                <div className="flex items-center gap-2">
+                                  <span className={cn("font-semibold", t.textColor)}>{t.label}</span>
+                                  <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", t.bg, t.textColor)}>{pct}%</span>
+                                </div>
+                                <span className="text-muted-foreground text-xs">{t.count} of {summary.total_applicants}</span>
+                              </div>
+                              <div className="h-2.5 bg-muted rounded-full overflow-hidden">
+                                <div className={cn("h-full rounded-full transition-all duration-500", t.color)} style={{ width: `${pct}%` }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <div className="pt-2 border-t">
+                          <button onClick={() => setAnalyticsSubTab('rankings')} className="text-xs text-primary hover:underline flex items-center gap-1">
+                            <ChevronRight className="h-3 w-3" /> View full rankings table
+                          </button>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <Trophy className="h-4 w-4 text-amber-500" /> Top Candidates
+                        </CardTitle>
+                        <CardDescription>Highest final weighted scores</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        {rankings.slice(0, 5).map((r, idx) => (
+                          <div key={r.candidate_id} className={cn("flex items-center gap-3 p-2 rounded-lg", idx === 0 ? "bg-amber-50/60 dark:bg-amber-900/20" : "hover:bg-muted/40")}>
+                            <span className={cn("font-bold text-base w-6 text-center shrink-0", idx === 0 ? "text-amber-500" : idx === 1 ? "text-slate-400" : idx === 2 ? "text-amber-700" : "text-muted-foreground")}>
+                              {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : r.rank}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-sm truncate">{r.name || "Unknown"}</p>
+                              <p className="text-xs text-muted-foreground truncate">{r.email || "-"}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="font-mono font-bold text-sm">{r.final_score != null ? `${r.final_score.toFixed(1)}%` : `${r.resume_score.toFixed(1)}%`}</p>
+                              <TagBadge tag={r.tag} />
+                            </div>
+                          </div>
+                        ))}
+                        {rankings.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No rankings yet</p>}
+                        {rankings.length > 5 && (
+                          <div className="pt-2 border-t">
+                            <button onClick={() => setAnalyticsSubTab('rankings')} className="text-xs text-primary hover:underline flex items-center gap-1">
+                              <ChevronRight className="h-3 w-3" /> See all {rankings.length} candidates
+                            </button>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <Card className="bg-muted/20 border-dashed">
+                    <CardContent className="pt-4 pb-4">
+                      <div className="flex flex-wrap gap-6 text-sm">
+                        <div className="flex items-center gap-2"><Target className="h-4 w-4 text-blue-500" /><span className="text-muted-foreground">Resume weight:</span><span className="font-semibold">{job.resume_weight}%</span></div>
+                        <div className="flex items-center gap-2"><BrainCircuit className="h-4 w-4 text-purple-500" /><span className="text-muted-foreground">Quiz weight:</span><span className="font-semibold">{job.quiz_weight}%</span></div>
+                        <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-500" /><span className="text-muted-foreground">Pass threshold:</span><span className="font-semibold">{job.pass_threshold}%</span></div>
+                        <div className="flex items-center gap-2"><TrendingUp className="h-4 w-4 text-amber-500" /><span className="text-muted-foreground">Formula:</span><span className="font-semibold">Resume{job.resume_weight/100} + Quiz{job.quiz_weight/100}</span></div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+
+              {/*  RANKINGS  */}
+              {analyticsSubTab === 'rankings' && (() => {
+                const filtered = rankings.filter(r => {
+                  const q = rankingsSearch.toLowerCase();
+                  const matchesSearch = !q || (r.name?.toLowerCase().includes(q) || r.email?.toLowerCase().includes(q));
+                  const matchesTag = rankingsTagFilter === 'all' || r.tag?.toLowerCase() === rankingsTagFilter.toLowerCase();
+                  return matchesSearch && matchesTag;
+                });
+                const totalPages = Math.max(1, Math.ceil(filtered.length / rankingsPageSize));
+                const safePage = Math.min(rankingsPage, totalPages);
+                const pageRows = filtered.slice((safePage - 1) * rankingsPageSize, safePage * rankingsPageSize);
+                return (
+                  <div className="space-y-3">
+                    <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-between">
+                      <div className="flex gap-2 flex-wrap">
+                        <Input
+                          placeholder="Search by name or email"
+                          value={rankingsSearch}
+                          onChange={e => { setRankingsSearch(e.target.value); setRankingsPage(1); }}
+                          className="w-56 h-8 text-sm"
+                        />
+                        <div className="flex gap-1">
+                          {(['all', 'Strong', 'Medium', 'Reject'] as const).map(tag => (
+                            <button key={tag} onClick={() => { setRankingsTagFilter(tag); setRankingsPage(1); }}
+                              className={cn("px-2.5 py-1 rounded text-xs font-medium border transition-colors",
+                                rankingsTagFilter === tag
+                                  ? tag === 'Strong' ? 'bg-emerald-100 border-emerald-400 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                  : tag === 'Medium' ? 'bg-amber-100 border-amber-400 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                                  : tag === 'Reject' ? 'bg-red-100 border-red-400 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                                  : 'bg-primary text-primary-foreground border-primary'
+                                  : 'bg-background text-muted-foreground border-border hover:bg-muted'
+                              )}>{tag === 'all' ? 'All' : tag}</button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span>{filtered.length} of {rankings.length}</span>
+                        <div className="flex items-center border border-border/60 rounded-lg overflow-hidden">
+                          {[10, 25, 50, 100].map(n => (
+                            <button key={n} onClick={() => { setRankingsPageSize(n); setRankingsPage(1); }}
+                              className={`px-2 py-1 text-xs font-medium transition-colors border-r border-border/40 last:border-r-0 ${rankingsPageSize === n ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>
+                              {n}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <Card>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-12">Rank</TableHead>
+                            <TableHead>Candidate</TableHead>
+                            <TableHead>Tag</TableHead>
+                            <TableHead>Resume %</TableHead>
+                            <TableHead>Quiz /36</TableHead>
+                            <TableHead>Final %</TableHead>
+                            <TableHead>Result</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {pageRows.length === 0 ? (
+                            <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">No candidates match your filters</TableCell></TableRow>
+                          ) : pageRows.map((r) => {
+                            const globalIdx = rankings.findIndex(x => x.candidate_id === r.candidate_id);
+                            return (
+                              <TableRow key={r.candidate_id} className={globalIdx < 3 ? "bg-amber-50/30 dark:bg-amber-900/10" : ""}>
+                                <TableCell>
+                                  <span className={cn("font-bold text-base", globalIdx === 0 ? "text-amber-500" : globalIdx === 1 ? "text-slate-400" : globalIdx === 2 ? "text-amber-700" : "text-muted-foreground")}>
+                                    {globalIdx < 3 ? ['','',''][globalIdx] : r.rank}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="font-medium">{r.name || "Unknown"}</div>
+                                  <div className="text-xs text-muted-foreground">{r.email || "-"}</div>
+                                </TableCell>
+                                <TableCell><TagBadge tag={r.tag} /></TableCell>
+                                <TableCell><span className="font-mono text-sm">{r.resume_score.toFixed(1)}%</span></TableCell>
+                                <TableCell>{r.quiz_score != null ? <span className="font-mono text-sm">{r.quiz_score.toFixed(1)}</span> : <span className="text-muted-foreground text-xs"></span>}</TableCell>
+                                <TableCell>{r.final_score != null ? <span className="font-mono font-bold">{r.final_score.toFixed(1)}%</span> : <span className="text-muted-foreground text-xs"></span>}</TableCell>
+                                <TableCell>
+                                  {r.passed === true && <span className="flex items-center gap-1 text-emerald-600 text-xs font-medium"><CheckCircle2 className="h-3 w-3" /> Pass</span>}
+                                  {r.passed === false && <span className="flex items-center gap-1 text-red-500 text-xs font-medium"><XCircle className="h-3 w-3" /> Fail</span>}
+                                  {r.passed === null && <span className="text-muted-foreground text-xs"></span>}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </Card>
+                    {totalPages > 1 && (
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-muted-foreground">Page {safePage} of {totalPages}  {pageRows.length} records shown</p>
+                        <div className="flex gap-1">
+                          <Button variant="outline" size="sm" disabled={safePage === 1} onClick={() => setRankingsPage(1)} className="h-7 px-2 text-xs"></Button>
+                          <Button variant="outline" size="sm" disabled={safePage === 1} onClick={() => setRankingsPage(p => p - 1)} className="h-7 px-2 text-xs"></Button>
+                          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                            const offset = Math.max(0, Math.min(safePage - 3, totalPages - 5));
+                            const pg = i + 1 + offset;
+                            return <Button key={pg} variant={pg === safePage ? "default" : "outline"} size="sm" onClick={() => setRankingsPage(pg)} className="h-7 w-7 p-0 text-xs">{pg}</Button>;
+                          })}
+                          <Button variant="outline" size="sm" disabled={safePage === totalPages} onClick={() => setRankingsPage(p => p + 1)} className="h-7 px-2 text-xs"></Button>
+                          <Button variant="outline" size="sm" disabled={safePage === totalPages} onClick={() => setRankingsPage(totalPages)} className="h-7 px-2 text-xs"></Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/*  SKILL GAP  */}
+              {analyticsSubTab === 'skillgap' && (
+                <div className="space-y-4">
+                  {skillGaps.length === 0 ? (
+                    <Card className="p-12 text-center">
+                      <BarChart3 className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                      <p className="font-medium">No skill gap data yet</p>
+                      <p className="text-sm text-muted-foreground">Upload and process resumes to populate skill gap analysis.</p>
+                    </Card>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-3 gap-3">
+                        {(() => {
+                          const critical = skillGaps.filter(g => g.required && g.gap_pct > 70).length;
+                          const partial = skillGaps.filter(g => g.gap_pct > 0 && g.gap_pct <= 70).length;
+                          const covered = skillGaps.filter(g => g.gap_pct === 0).length;
+                          return [
+                            { label: 'Critical Gaps', value: critical, color: 'text-red-600', icon: XCircle },
+                            { label: 'Partial Gaps', value: partial, color: 'text-amber-600', icon: TrendingUp },
+                            { label: 'Well Covered', value: covered, color: 'text-emerald-600', icon: CheckCircle2 },
+                          ].map(s => (
+                            <Card key={s.label}>
+                              <CardContent className="p-4 flex items-center gap-3">
+                                <s.icon className={cn("h-5 w-5 shrink-0", s.color)} />
+                                <div>
+                                  <p className={cn("text-xl font-bold", s.color)}>{s.value}</p>
+                                  <p className="text-xs text-muted-foreground">{s.label}</p>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ));
+                        })()}
+                      </div>
+                      <AnalyticsView skillGaps={skillGaps} jobTitle={job.title} onRefresh={() => loadAll(true)} />
+                      <Card>
+                        <CardHeader className="pb-3">
+                          <CardTitle className="text-base">All Skills Detail</CardTitle>
+                          <CardDescription>{skillGaps.length} skills tracked</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                            {[...skillGaps].sort((a, b) => b.gap_pct - a.gap_pct).map((g) => (
+                              <div key={g.skill} className="space-y-1">
+                                <div className="flex justify-between text-sm">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">{g.skill}</span>
+                                    {g.required && <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Required</Badge>}
+                                  </div>
+                                  <span className="text-muted-foreground font-mono text-xs">{g.candidate_match_pct.toFixed(0)}% match</span>
+                                </div>
+                                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                                  <div className={cn("h-full rounded-full transition-all", g.gap_pct > 70 ? "bg-destructive" : g.gap_pct > 40 ? "bg-amber-500" : "bg-emerald-500")} style={{ width: `${g.candidate_match_pct}%` }} />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </TabsContent>
+      </Tabs>
+            {/*  Pool Import Modal  */}
+      <ImportFromPoolModal
+        open={importPoolOpen}
+        onOpenChange={setImportPoolOpen}
+        jobId={job.id}
+        jobTitle={job.title}
+        jobMustHaveSkills={job.must_have_skills || []}
+        onImportComplete={loadAll}
+      />
+
+      {/*  Magic Link Export Modal  */}
+
+      {/* ── Show Quiz — full preview modal ───────────────────────────────── */}
+      {previewQuiz && (() => {
+        const quiz = quizzes.find(q => q.id === previewQuiz);
+        const questions = quizQuestions[previewQuiz] || [];
+        return (
+          <Dialog open={!!previewQuiz} onOpenChange={open => !open && setPreviewQuiz(null)}>
+            <DialogContent className="sm:max-w-[680px] max-h-[90vh] flex flex-col p-0">
+              <DialogHeader className="px-6 pt-5 pb-4 border-b shrink-0">
+                <DialogTitle className="flex items-center gap-2 text-base">
+                  <BookOpen className="h-4 w-4 text-primary" />
+                  {quiz?.title || 'Quiz Preview'}
+                </DialogTitle>
+                <DialogDescription className="flex items-center gap-4 mt-1">
+                  <span className="flex items-center gap-1"><BookOpen className="h-3 w-3" />{quiz?.question_count} questions</span>
+                  <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{quiz?.duration_minutes} min</span>
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+                {questions.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    <p className="text-sm">Loading questions…</p>
+                  </div>
+                ) : questions.map((q: any, idx: number) => (
+                  <div key={q.id} className="rounded-xl border bg-card p-4 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <span className="shrink-0 h-6 w-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center mt-0.5">
+                        {idx + 1}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium leading-snug">{q.question_text}</p>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                            q.difficulty === 'easy'   ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                            q.difficulty === 'medium' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                                        'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                          }`}>{q.difficulty}</span>
+                          {q.skill_tag && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{q.skill_tag}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pl-9">
+                      {(q.options || []).map((opt: string, oi: number) => (
+                        <div key={oi} className={`flex items-start gap-2 text-xs px-3 py-2 rounded-lg border transition-colors ${
+                          oi === q.correct_answer
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-700 dark:text-emerald-300 font-medium'
+                            : 'bg-muted/30 border-border/60 text-muted-foreground'
+                        }`}>
+                          <span className="font-mono text-[10px] font-bold opacity-50 shrink-0 mt-px">{['A','B','C','D'][oi]}</span>
+                          <span className="leading-snug">{opt}</span>
+                          {oi === q.correct_answer && <Check className="h-3 w-3 ml-auto shrink-0 mt-0.5 text-emerald-600" />}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="px-6 py-4 border-t shrink-0 flex justify-between items-center gap-3 bg-muted/20">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => { setPreviewQuiz(null); if (previewQuiz) handleSendQuizToAll(previewQuiz); }}
+                  disabled={shortlistedCount === 0 || sendingQuiz === previewQuiz}
+                >
+                  <Link2 className="h-3.5 w-3.5" /> Share magic link to {shortlistedCount} shortlisted
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setPreviewQuiz(null)}>
+                  <X className="h-4 w-4 mr-1.5" /> Close
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
+
+      <Dialog open={isLinkModalOpen} onOpenChange={setIsLinkModalOpen}>
+        <DialogContent className="sm:max-w-[700px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Send className="h-5 w-5 text-primary" /> Invitations Sent!</DialogTitle>
+            <DialogDescription>
+              Automated congratulatory emails with secure test links have been sent. You can also copy them manually below.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[400px] overflow-y-auto space-y-4 py-4">
+            {magicLinks.map((ml, idx) => (
+              <div key={idx} className="flex items-center justify-between p-3 border rounded-lg bg-muted/20">
+                <div className="overflow-hidden mr-4">
+                  <div className="font-medium truncate">{ml.name}</div>
+                  <div className="text-xs text-muted-foreground truncate mb-1">{ml.email || "No email parsed"}</div>
+                  <div className="text-xs font-mono bg-muted p-1 rounded truncate text-primary">{ml.link}</div>
+                </div>
+                <Button variant="outline" size="sm" className="shrink-0" onClick={() => {
+                  navigator.clipboard.writeText(ml.link);
+                  toast.success(`Copied link for ${ml.name}`);
+                }}>
+                  <Copy className="h-4 w-4 mr-2" /> Copy
+                </Button>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setIsLinkModalOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/*  Email Draft Modal  */}
+      <Dialog open={emailModalOpen} onOpenChange={setEmailModalOpen}>
+        <DialogContent className="sm:max-w-[700px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Mail className="h-5 w-5 text-primary" /> Review AI Email Draft</DialogTitle>
+            <DialogDescription>To: {emailDraft.toEmail}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Subject</Label>
+              <Input value={emailDraft.subject} onChange={e => setEmailDraft({...emailDraft, subject: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label>Message Body (HTML Supported)</Label>
+              <Textarea 
+                className="min-h-[250px] font-mono text-sm bg-muted/10 border-primary/20" 
+                value={emailDraft.body} 
+                onChange={e => setEmailDraft({...emailDraft, body: e.target.value})} 
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleSendDraftedEmail} disabled={sendingEmail}>
+              {sendingEmail ? "Dispatching..." : <><Send className="mr-2 h-4 w-4" /> Send Real Email</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+

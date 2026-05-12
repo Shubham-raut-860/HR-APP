@@ -1,0 +1,9 @@
+uploads/
+*.db
+*.sqlite
+.env
+__pycache__/
+*.pyc
+dist/
+.pytest_cache/
+logs/

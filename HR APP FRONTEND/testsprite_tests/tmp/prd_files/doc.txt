@@ -1,0 +1,107 @@
+Here is a comprehensive Product Specification Document based on the architecture, features, and business logic found in your app backend codebase.
+
+Product Specification Document: HireAi
+Product Name: HireAi
+Product Type: AI-Powered Applicant Tracking System (ATS) and Career Portal
+Target Users: HR Professionals, Recruiters, Administrators, and Job Candidates
+
+1. Product Purpose & Vision
+HireAi is an end-to-end, AI-driven recruitment platform designed to eliminate manual resume screening, standardize candidate evaluation, and empower applicants. For HR teams, it provides deep semantic matching between resumes and Job Descriptions (JDs), automated technical assessments, and robust analytics. For candidates, it offers a dedicated portal with AI-powered career tools like resume enhancement, cover letter generation, and career path analysis.
+
+2. User Roles & Access Management
+The system enforces strict Role-Based Access Control (RBAC):
+
+Admin: Full system access, cross-job analytics, global user management (activation/deactivation), and audit log visibility.
+
+HR/Recruiter: Can create JDs, upload/manage resumes, generate quizzes, and view analytics strictly for the jobs they own.
+
+Candidate: Can browse public jobs, apply, manage a personal resume vault, view their application feedback, take assessments, and use AI career tools.
+
+3. Core Features & Functionality
+3.1. HR & Recruitment Workflow
+Job Description (JD) Management:
+
+AI Generation: HR can generate complete JDs by providing a role title, experience range, and context.
+
+Document Parsing: JDs can be extracted automatically from uploaded PDF, DOCX, or TXT files (single or bulk).
+
+Resume Ingestion & Processing:
+
+Multi-Format Support: Extracts text from PDF, DOCX, and DOC files.
+
+Fallback OCR: Automatically detects scanned or image-based PDFs and uses Tesseract OCR to extract text.
+
+Bulk Upload: Supports uploading up to 500 resumes at once in asynchronous batches, with built-in deduplication by file hash and candidate email.
+
+AI Scoring & Shortlisting Engine:
+
+Semantic Matching: Uses vector embeddings and LLMs (Azure OpenAI/Gemini) to evaluate resumes against JD requirements.
+
+Multi-factor Scoring: Calculates scores based on Skill Match, Experience, Project Relevance, Education, and Location.
+
+Candidate Tiers: Adjusts scoring weights dynamically based on candidate seniority (Fresher, Mid-level, Senior).
+
+Categorization: Automatically assigns tags (Strong, Medium, Reject) based on configurable thresholds.
+
+Candidate Pool: Allows HR to upload resumes to a general "Pool" without a specific job, then dynamically search the pool and import matches to active jobs.
+
+Analytics & Reporting:
+
+Visual dashboards tracking funnel metrics (Total Applicants, Shortlisted, Tested, Hired).
+
+Candidate ranking tables using SQL window functions for high performance.
+
+Skill-gap analysis to see which required skills the applicant pool is missing.
+
+Export capabilities to Excel and PDF formats.
+
+3.2. Candidate Portal
+Resume Vault: Candidates can securely store up to 5 resumes, mark defaults, and apply to jobs using stored profiles without re-uploading.
+
+Application Feedback: Candidates can view their transparent AI evaluation, including matched/missing skills, resume score, and actionable suggestions.
+
+AI Career Coach Tools:
+
+Resume Builder & Enhancer: Candidates can paste text or use form data to generate an ATS-optimized resume. The AI rewrites bullets and suggests keyword additions tailored to specific JDs.
+
+Cover Letter Generator: AI drafts personalized cover letters referencing the candidate's actual projects and the target company.
+
+Career Path Analysis: Evaluates work history, identifies skill gaps, and generates a 6-month upskilling roadmap.
+
+Mock Interviews: Generates practice questions based on the candidate's profile.
+
+3.3. Technical Assessment Engine
+AI Quiz Generation: Automatically generates Multiple Choice Questions (Easy, Medium, Hard) tailored to the specific skills required in the JD.
+
+Automated Distribution: Sends secure, time-limited magic links to candidates automatically when they are marked as "Strong" or "Medium".
+
+Anti-Cheat & Execution: Tracks tab switches during the test. Supports automated evaluation of practical coding submissions via LLM.
+
+Dynamic Weighting: Calculates a final candidate score by blending their Resume Score and Quiz Score according to HR-defined weights.
+
+3.4. Communication & Notifications
+In-App Notification Center: Real-time alerts for job postings, status changes, and quiz results. Users can snooze, dismiss, or block specific notification types.
+
+Custom SMTP Integration: HR users can securely store their own SMTP credentials (encrypted at rest) to send emails directly from their corporate addresses.
+
+AI Email Drafting: HR can use AI to instantly draft rejection, interview invite, or offer emails with context from the candidate's scores.
+
+4. Technical Architecture & Non-Functional Requirements
+Backend Framework: Python FastAPI (Asynchronous, High Concurrency).
+
+Database: PostgreSQL (or compatible SQL database) using SQLAlchemy 2.0 Async ORM.
+
+AI/LLM Provider: Azure OpenAI (Primary) / Google Gemini (Fallback).
+
+Observability & Telemetry: MLflow and Langfuse integrated for tracing LLM token usage, latency, and evaluating model outputs (DeepEval/RAGAS for fairness and hallucination checks).
+
+Caching: In-memory semantic caching using cosine similarity to reduce redundant LLM calls for identical JD generations or resume re-evaluations.
+
+5. Security & Privacy
+Data Encryption at Rest: All raw resume files and sensitive user preferences (like SMTP passwords) are encrypted on the disk using symmetric Fernet AES-HMAC encryption.
+
+Rate Limiting: Global and route-specific API rate limiting to prevent brute-force attacks (e.g., 5 requests/minute for logins/registrations).
+
+Authentication: Stateless JWT (JSON Web Tokens) with distinct access scopes for Admin, HR, and Candidates.
+
+Audit Logging: Every critical action (uploading, scoring, deleting, password changes) is recorded in an immutable audit log tracking the User ID, action, resource, and IP address.

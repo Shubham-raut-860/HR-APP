@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "D:\shubham\HR APP\Backend\test_runner.py", line 6, in <module>
+    print("Degree rank test for Bachelors:", _degree_rank({'degree': 'Bachelors in Computer Science'}))
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\shubham\HR APP\Backend\app\services\scoring_service.py", line 503, in _degree_rank
+    deg = re.sub(r'\.', '', (e.get("degree") or "")).lower()
+                             ^^^^^
+AttributeError: 'str' object has no attribute 'get'
