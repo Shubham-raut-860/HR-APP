@@ -1,4 +1,4 @@
-﻿import * as React from 'react';
+import * as React from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -307,8 +307,8 @@ export default function JobDetails() {
         getCandidates(id, 100, signal),
         getQuizzes(id, signal),
       ]);
-  const candidatesData = candidatesRes.status === "fulfilled" ? candidatesRes.value : [];
-  const quizzesData = quizzesRes.status === "fulfilled" ? quizzesRes.value : [];
+      const candidatesData = candidatesRes.status === "fulfilled" ? candidatesRes.value : [];
+      const quizzesData = quizzesRes.status === "fulfilled" ? quizzesRes.value : [];
       setJob(jobData);
 
       // Only update editForm if the edit dialog is NOT open (prevents wiping user's in-progress edits)
@@ -336,7 +336,7 @@ export default function JobDetails() {
       if (!isBackground) {
         const status = error.response.status;
         const detail = error.response.data.detail;
-  toast.error(status === 404 ? "Job not found" : (detail || "Failed to load job"));
+        toast.error(status === 404 ? "Job not found" : (detail || "Failed to load job"));
         if (status === 404) navigate("/jobs");
       }
     } finally {
@@ -413,9 +413,9 @@ export default function JobDetails() {
       setBulkProgress(finalStatus.progress || {
         processed: files.length,
         total: files.length,
-        success_count: summary.success_count ?? successList.length  0,
-        failed_count: summary.failed_count ?? failedList.length  0,
-        duplicate_count: summary.duplicate_count ?? duplicateList.length  0,
+        success_count: summary.success_count ?? successList.length ?? 0,
+        failed_count: summary.failed_count ?? failedList.length ?? 0,
+        duplicate_count: summary.duplicate_count ?? duplicateList.length ?? 0,
       });
 
       const nextStatuses: Record<string, 'ready' | 'uploading' | 'done' | 'error' | 'duplicate'> = { ...initialStatuses };
@@ -436,15 +436,15 @@ export default function JobDetails() {
       }
       setFileStatuses(nextStatuses);
 
-      successCount = summary.success_count ?? successList.length  0;
-      failCount = summary.failed_count ?? failedList.length  0;
-      dupCount = summary.duplicate_count ?? duplicateList.length  0;
+      successCount = summary.success_count ?? successList.length ?? 0;
+      failCount = summary.failed_count ?? failedList.length ?? 0;
+      dupCount = summary.duplicate_count ?? duplicateList.length ?? 0;
     } catch (err: any) {
       const detail = err.response.data.detail;
       const detailText =
         typeof detail === "string"
-           detail
-  : (detail.message || err.message || "Bulk upload failed");
+          ? detail
+          : (detail.message || err.message || "Bulk upload failed");
       const nextStatuses: Record<string, 'ready' | 'uploading' | 'done' | 'error' | 'duplicate'> = { ...initialStatuses };
       fileKeys.forEach((k) => { nextStatuses[k] = 'error'; });
       setFileStatuses(nextStatuses);
@@ -464,14 +464,14 @@ export default function JobDetails() {
     setIsParsing(false);
 
     if (successCount > 0) {
-  toast.success(`Parsed ${successCount} resume${successCount > 1 ? 's' : ''}`, {
+      toast.success(`Parsed ${successCount} resume${successCount > 1 ? 's' : ''}`, {
         description: [
-  failCount > 0 ? `${failCount} failed` : '',
-  dupCount > 0 ? `${dupCount} duplicate${dupCount > 1 ? 's' : ''} skipped` : '',
+          failCount > 0 ? `${failCount} failed` : '',
+          dupCount > 0 ? `${dupCount} duplicate${dupCount > 1 ? 's' : ''} skipped` : '',
         ].filter(Boolean).join(' | ') || 'All processed successfully',
       });
     } else if (dupCount > 0 && failCount === 0) {
-  toast.info(`All ${dupCount} file${dupCount > 1 ? 's' : ''} were duplicates - already uploaded`);
+    toast.info(`All ${dupCount} file${dupCount > 1 ? 's' : ''} were duplicates - already uploaded`);
     } else {
       toast.error('No resumes were processed', { description: 'Check files and try again' });
     }
@@ -489,7 +489,7 @@ export default function JobDetails() {
     const accepted = dropped.filter(f => f.size <= MAX_RESUME_SIZE_BYTES);
     const rejected = dropped.length - accepted.length;
     if (rejected > 0) {
-  toast.error(`${rejected} file${rejected > 1 ? "s" : ""} exceed 20 MB and were skipped.`);
+      toast.error(`${rejected} file${rejected > 1 ? "s" : ""} exceed 20 MB and were skipped.`);
     }
     setFiles(accepted);
   };
@@ -499,7 +499,7 @@ export default function JobDetails() {
     const accepted = selected.filter(f => f.size <= MAX_RESUME_SIZE_BYTES);
     const rejected = selected.length - accepted.length;
     if (rejected > 0) {
-  toast.error(`${rejected} file${rejected > 1 ? "s" : ""} exceed 20 MB and were skipped.`);
+      toast.error(`${rejected} file${rejected > 1 ? "s" : ""} exceed 20 MB and were skipped.`);
     }
     setFiles(accepted);
     e.target.value = "";
@@ -529,7 +529,7 @@ export default function JobDetails() {
     toast.info("Generating 20 MCQ questions with AI...");
     try {
       const quiz = await generateQuiz(job.id, undefined, quizDuration);
-  setQuizzes(prev => prev.some(q => q.id === quiz.id) ? prev : [quiz, ...prev]);
+      setQuizzes(prev => prev.some(q => q.id === quiz.id) ? prev : [quiz, ...prev]);
       toast.success(`Quiz created: "${quiz.title}" (${quiz.question_count} questions)`);
       await loadAll();
     } catch (e: any) {
@@ -545,7 +545,7 @@ export default function JobDetails() {
     toast.info(`Parsing "${quizFile.name}" with AI...`);
     try {
       const quiz = await uploadQuizFromFile(job.id, quizFile, quizDuration);
-  setQuizzes(prev => prev.some(q => q.id === quiz.id) ? prev : [quiz, ...prev]);
+      setQuizzes(prev => prev.some(q => q.id === quiz.id) ? prev : [quiz, ...prev]);
       toast.success(`Quiz created: "${quiz.title}" (${quiz.question_count} questions)`);
       setQuizFile(null);
       setQuizMode('ai');
@@ -569,8 +569,8 @@ export default function JobDetails() {
       toast.success(`Quiz links sent to ${shortlisted.length} candidates`);
 
       // Restore the missing trigger for the Magic Links Modal
-  const links = result.links || result.magic_links || (Array.isArray(result) ? result : []);
-  setMagicLinks(Array.isArray(links) ? links : []);
+      const links = result.links || result.magic_links || (Array.isArray(result) ? result : []);
+      setMagicLinks(Array.isArray(links) ? links : []);
       setIsLinkModalOpen(true);
     } catch {
       toast.error("Failed to send quiz links");
@@ -686,8 +686,8 @@ export default function JobDetails() {
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-3">
             <h2 className="text-3xl font-bold tracking-tight truncate">{job.title}</h2>
-  <Badge variant={job.is_active ? "default" : "secondary"}>
-  {job.is_active ? "Active" : "Closed"}
+            <Badge variant={job.is_active ? "default" : "secondary"}>
+              {job.is_active ? "Active" : "Closed"}
             </Badge>
           </div>
           <div className="flex flex-wrap items-center gap-2 mt-1">
@@ -705,8 +705,8 @@ export default function JobDetails() {
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" onClick={() => {
                 setEditForm(job);
-  setRawMustHave(Array.isArray(job.must_have_skills) ? job.must_have_skills.join(', ') : (job.must_have_skills || ''));
-  setRawGoodToHave(Array.isArray(job.good_to_have_skills) ? job.good_to_have_skills.join(', ') : (job.good_to_have_skills || ''));
+                setRawMustHave(Array.isArray(job.must_have_skills) ? job.must_have_skills.join(', ') : (job.must_have_skills || ''));
+                setRawGoodToHave(Array.isArray(job.good_to_have_skills) ? job.good_to_have_skills.join(', ') : (job.good_to_have_skills || ''));
               }}>
                 <Pencil className="mr-2 h-4 w-4" /> Edit
               </Button>
@@ -837,7 +837,7 @@ export default function JobDetails() {
             <DialogTrigger asChild>
               <Button variant="destructive" size="sm" disabled={!job.is_active}>
                 <XCircle className="mr-2 h-4 w-4" />
-  {job.is_active ? "Close Job" : "Closed"}
+                {job.is_active ? "Close Job" : "Closed"}
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -864,13 +864,13 @@ export default function JobDetails() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard icon={Users} label="Total Applied" value={candidates.length} sub="Resumes uploaded" />
         <StatCard icon={Star} label="Shortlisted" value={shortlistedCount}
-  sub={`${candidates.length ? Math.round(shortlistedCount / candidates.length * 100) : 0}% of applicants`}
+          sub={`${candidates.length ? Math.round(shortlistedCount / candidates.length * 100) : 0}% of applicants`}
           color="text-emerald-600" />
         <StatCard icon={BrainCircuit} label="Quiz Taken" value={testedCount}
-  sub={`${shortlistedCount ? Math.round(testedCount / (shortlistedCount || 1) * 100) : 0}% of shortlisted`}
+          sub={`${shortlistedCount ? Math.round(testedCount / (shortlistedCount || 1) * 100) : 0}% of shortlisted`}
           color="text-blue-600" />
         <StatCard icon={Trophy} label="Passed" value={summary.pass_count ?? 0}
-  sub={`${summary.avg_final_score ? `Avg ${summary.avg_final_score.toFixed(1)}%` : "No final scores yet"}`}
+          sub={`${summary.avg_final_score ? `Avg ${summary.avg_final_score.toFixed(1)}%` : "No final scores yet"}`}
           color="text-amber-600" />
       </div>
 
@@ -912,7 +912,7 @@ export default function JobDetails() {
                 <div
                   className={cn(
                     "border-2 border-dashed rounded-lg p-10 text-center cursor-pointer transition-colors",
-  isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
+                    isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
                   )}
                   onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
                   onClick={() => document.getElementById('file-upload-jd').click()}
@@ -934,15 +934,15 @@ export default function JobDetails() {
                   const totalParsed = Object.values(fileStatuses).filter(s => s === 'done').length;
                   const progressProcessed = bulkProgress.processed ?? Object.values(fileStatuses).filter(s => s !== 'ready' && s !== 'uploading').length;
                   const progressTotal = bulkProgress.total ?? files.length;
-  const progressPct = progressTotal > 0 ? Math.min(100, Math.round((progressProcessed / progressTotal) * 100)) : 0;
+                  const progressPct = progressTotal > 0 ? Math.min(100, Math.round((progressProcessed / progressTotal) * 100)) : 0;
 
                   return (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <p className="text-sm font-medium">
                           {isParsing
-  `Processing ${progressProcessed} / ${progressTotal} file${progressTotal > 1 ? 's' : ''} (${progressPct}%)...`
-  : `${files.length} file${files.length > 1 ? 's' : ''} ready`}
+            ? `Processing ${progressProcessed} / ${progressTotal} file${progressTotal > 1 ? 's' : ''} (${progressPct}%)...`
+            : `${files.length} file${files.length > 1 ? 's' : ''} ready`}
                         </p>
                         {!isParsing && (
                           <Button variant="ghost" size="sm" onClick={() => { setFiles([]); setFileStatuses({}); setBulkRunId(null); setBulkProgress(null); }}>Clear all</Button>
@@ -951,7 +951,8 @@ export default function JobDetails() {
 
                       {isParsing && bulkProgress && (
                         <div className="text-xs text-muted-foreground">
-                          {bulkProgress.success_count} success | {bulkProgress.failed_count} failed | {bulkProgress.duplicate_count} duplicate ? {bulkRunId ? ` | Job ${bulkRunId.slice(0, 8)}...` : ""}
+                          {bulkProgress.success_count} success | {bulkProgress.failed_count} failed | {bulkProgress.duplicate_count} duplicate
+                  {bulkRunId ? ` | Job ${bulkRunId.slice(0, 8)}...` : ""}
                         </div>
                       )}
 
@@ -968,7 +969,7 @@ export default function JobDetails() {
                       <div className="max-h-52 overflow-y-auto space-y-1.5 pr-0.5">
                         {files.map((f, i) => {
                           const key = f.name + f.size + '_' + i;
-                          const status = fileStatuses[key]  'ready';
+                          const status = fileStatuses[key] ?? 'ready';
                           return (
                             <div key={i} className={`flex items-center justify-between p-2.5 rounded border text-sm transition-colors ${status === 'done' ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800' :
                                 status === 'error' ? 'bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-800' :
@@ -1022,8 +1023,8 @@ export default function JobDetails() {
 
                       <Button onClick={handleParseAndRank} disabled={isParsing} className="w-full">
                         {isParsing
-                           <><div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />Processing {progressPct}%...</>
-  : <><BrainCircuit className="mr-2 h-4 w-4" />Parse & Rank {files.length} Resume{files.length > 1 ? "s" : ""}</>
+                          ? <><div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />Processing {progressPct}%...</>
+                          : <><BrainCircuit className="mr-2 h-4 w-4" />Parse & Rank {files.length} Resume{files.length > 1 ? "s" : ""}</>
                         }
                       </Button>
                     </div>
@@ -1032,14 +1033,14 @@ export default function JobDetails() {
 
                 {/*  Candidate Intelligence / Upload Guide  */}
                 {candidates.length > 0
-                   (
+                  ? (
                     <CandidateIntelligencePanel
                       candidates={candidates}
                       navigate={navigate}
                       onViewAllShortlist={() => setActiveTab('shortlist')}
                     />
                   )
-  : <UploadReadyState />
+                  : <UploadReadyState />
                 }
               </CardContent>
             </Card>
@@ -1056,8 +1057,8 @@ export default function JobDetails() {
                 <CardContent>
                   <div className="flex flex-wrap gap-2">
                     {(job.must_have_skills || []).length === 0
-                       <p className="text-sm text-muted-foreground">None specified. Add at least 3 must-have skills for reliable ranking.</p>
-  : job.must_have_skills.map((s: string) => (
+                      ? <p className="text-sm text-muted-foreground">None specified. Add at least 3 must-have skills for reliable ranking.</p>
+                      : job.must_have_skills.map((s: string) => (
                         <span
                           key={s}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-800"
@@ -1080,8 +1081,8 @@ export default function JobDetails() {
                 <CardContent>
                   <div className="flex flex-wrap gap-2">
                     {(job.good_to_have_skills || []).length === 0
-                       <p className="text-sm text-muted-foreground">None specified</p>
-  : job.good_to_have_skills.map((s: string) => (
+                      ? <p className="text-sm text-muted-foreground">None specified</p>
+                      : job.good_to_have_skills.map((s: string) => (
                         <span
                           key={s}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-800"
@@ -1145,20 +1146,20 @@ export default function JobDetails() {
             </div>
             <Button onClick={handleShortlist} disabled={shortlisting || candidates.length === 0} variant="outline">
               {shortlisting
-                 <><div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />Re-running...</>
-  : <><RefreshCw className="mr-2 h-4 w-4" />Re-run Shortlisting</>
+                ? <><div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />Re-running...</>
+                : <><RefreshCw className="mr-2 h-4 w-4" />Re-run Shortlisting</>
               }
             </Button>
           </div>
 
-          {candidates.length === 0  (
+          {candidates.length === 0 ? (
             <Card className="p-12 text-center shrink-0">
               <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
               <p className="font-medium">No candidates yet</p>
               <p className="text-sm text-muted-foreground">Upload resumes in the Resumes tab first.</p>
             </Card>
-  ) : (
-  <ShortlistTable candidates={candidates} jobs={job ? [job] : []} isLoading={loading} />
+          ) : (
+            <ShortlistTable candidates={candidates} jobs={job ? [job] : []} isLoading={loading} />
           )}
         </TabsContent>
 
@@ -1182,8 +1183,8 @@ export default function JobDetails() {
                     className={cn(
                       "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
                       quizMode === 'ai'
-                         "bg-background text-foreground shadow-sm border border-border/50"
-  : "text-muted-foreground hover:text-foreground"
+                        ? "bg-background text-foreground shadow-sm border border-border/50"
+                        : "text-muted-foreground hover:text-foreground"
                     )}
                   >
                     <Zap className="h-3.5 w-3.5" /> AI Generate
@@ -1193,8 +1194,8 @@ export default function JobDetails() {
                     className={cn(
                       "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
                       quizMode === 'upload'
-                         "bg-background text-foreground shadow-sm border border-border/50"
-  : "text-muted-foreground hover:text-foreground"
+                        ? "bg-background text-foreground shadow-sm border border-border/50"
+                        : "text-muted-foreground hover:text-foreground"
                     )}
                   >
                     <FileUp className="h-3.5 w-3.5" /> Upload paper
@@ -1215,7 +1216,7 @@ export default function JobDetails() {
                 />
               </div>
 
-              {quizMode === 'ai'  (
+              {quizMode === 'ai' ? (
                 /* AI mode */
                 <div className="flex items-center justify-between p-4 rounded-xl bg-muted/30 border border-border/50">
                   <div className="space-y-0.5">
@@ -1224,12 +1225,12 @@ export default function JobDetails() {
                   </div>
                   <Button onClick={handleGenerateQuiz} disabled={generatingQuiz} className="shrink-0">
                     {generatingQuiz
-                       <><div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />Generating...</>
-  : <><Zap className="mr-2 h-4 w-4" />Generate</>
+                      ? <><div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />Generating...</>
+                      : <><Zap className="mr-2 h-4 w-4" />Generate</>
                     }
                   </Button>
                 </div>
-  ) : (
+              ) : (
                 /* Upload mode */
                 <div className="space-y-3">
                   <div
@@ -1244,10 +1245,10 @@ export default function JobDetails() {
                     className={cn(
                       "relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-8 text-center transition-colors cursor-pointer",
                       quizFileDrag
-                         "border-primary bg-primary/5"
-  : quizFile
-                           "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/10"
-  : "border-border hover:border-primary/50 hover:bg-muted/30"
+                        ? "border-primary bg-primary/5"
+                        : quizFile
+                          ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/10"
+                          : "border-border hover:border-primary/50 hover:bg-muted/30"
                     )}
                     onClick={() => document.getElementById('quiz-file-input').click()}
                   >
@@ -1256,9 +1257,9 @@ export default function JobDetails() {
                       type="file"
                       accept=".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg,.webp,.tiff,.tif,.bmp,.gif"
                       className="hidden"
-                      onChange={e => e.target.files.[0] && setQuizFile(e.target.files[0])}
+                      onChange={e => e.target.files[0] && setQuizFile(e.target.files[0])}
                     />
-                    {quizFile  (
+                    {quizFile ? (
                       <>
                         <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
                           <Check className="h-5 w-5 text-emerald-600" />
@@ -1266,7 +1267,7 @@ export default function JobDetails() {
                         <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">{quizFile.name}</p>
                         <p className="text-xs text-muted-foreground">{(quizFile.size / 1024).toFixed(0)} KB | Click to change</p>
                       </>
-  ) : (
+                    ) : (
                       <>
                         <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
                           <FileUp className="h-5 w-5 text-muted-foreground" />
@@ -1282,8 +1283,8 @@ export default function JobDetails() {
                     disabled={!quizFile || uploadingQuiz}
                   >
                     {uploadingQuiz
-                       <><div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />Parsing questions...</>
-  : <><FileUp className="mr-2 h-4 w-4" />Upload & Parse</>
+                      ? <><div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />Parsing questions...</>
+                      : <><FileUp className="mr-2 h-4 w-4" />Upload & Parse</>
                     }
                   </Button>
                 </div>
@@ -1304,8 +1305,8 @@ export default function JobDetails() {
           {quizzes.map((quiz) => {
             const counts = new Map<string, number>();
             const questionList = Array.isArray(quizQuestions[quiz.id])
-               quizQuestions[quiz.id]
-  : (Array.isArray((quiz as any).questions) ? (quiz as any).questions : []);
+              ? quizQuestions[quiz.id]
+              : (Array.isArray((quiz as any).questions) ? (quiz as any).questions : []);
             if (Array.isArray(questionList) && questionList.length > 0) {
               for (const question of questionList) {
                 const label = String(question.difficulty || "").trim() || "Unknown";
@@ -1325,8 +1326,8 @@ export default function JobDetails() {
             }
             const difficultyEntries = Array.from(counts.entries()).sort((a, b) => {
               const order: Record<string, number> = { easy: 0, medium: 1, hard: 2 };
-              const an = order[a[0].trim().toLowerCase()]  99;
-              const bn = order[b[0].trim().toLowerCase()]  99;
+              const an = order[a[0].trim().toLowerCase()] ?? 99;
+              const bn = order[b[0].trim().toLowerCase()] ?? 99;
               if (an !== bn) return an - bn;
               return a[0].localeCompare(b[0]);
             });
@@ -1391,8 +1392,8 @@ export default function JobDetails() {
                     className={cn(
                       "px-4 py-1.5 rounded-md text-sm font-medium transition-all",
                       analyticsSubTab === tab
-                         "bg-background shadow text-foreground"
-  : "text-muted-foreground hover:text-foreground"
+                        ? "bg-background shadow text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
                     )}
                   >
                     {labels[tab]}
@@ -1410,13 +1411,13 @@ export default function JobDetails() {
             </div>
           </div>
 
-          {!summary  (
+          {!summary ? (
             <Card className="p-12 text-center">
               <BarChart3 className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
               <p className="font-medium">No analytics yet</p>
               <p className="text-sm text-muted-foreground">Upload and process resumes to see analytics.</p>
             </Card>
-  ) : (
+          ) : (
             <>
               {/*  OVERVIEW  */}
               {analyticsSubTab === 'overview' && (
@@ -1425,8 +1426,8 @@ export default function JobDetails() {
                     <StatCard icon={Users} label="Total" value={summary.total_applicants} />
                     <StatCard icon={CheckCircle2} label="Shortlisted" value={`${summary.shortlisted_pct.toFixed(1)}%`} sub={`${summary.shortlisted_count} candidates`} color="text-emerald-600" />
                     <StatCard icon={Target} label="Avg Resume" value={`${summary.avg_resume_score.toFixed(1)}%`} color="text-blue-600" />
-  <StatCard icon={BrainCircuit} label="Avg Quiz" value={(summary.avg_quiz_pct ? summary.avg_quiz_score) != null ? `${(summary.avg_quiz_pct ? summary.avg_quiz_score)!.toFixed(1)}%` : "N/A"} color="text-purple-600" />
-  <StatCard icon={Trophy} label="Pass Rate" value={summary.pass_count + summary.fail_count > 0 ? `${Math.round(summary.pass_count / (summary.pass_count + summary.fail_count) * 100)}%` : "N/A"} sub={`${summary.pass_count} passed`} color="text-amber-600" />
+                    <StatCard icon={BrainCircuit} label="Avg Quiz" value={(summary.avg_quiz_pct ?? summary.avg_quiz_score) != null ? `${(summary.avg_quiz_pct ?? summary.avg_quiz_score)!.toFixed(1)}%` : "N/A"} color="text-purple-600" />
+                    <StatCard icon={Trophy} label="Pass Rate" value={summary.pass_count + summary.fail_count > 0 ? `${Math.round(summary.pass_count / (summary.pass_count + summary.fail_count) * 100)}%` : "N/A"} sub={`${summary.pass_count} passed`} color="text-amber-600" />
                   </div>
 
                   <div className="grid gap-4 lg:grid-cols-2">
@@ -1440,7 +1441,7 @@ export default function JobDetails() {
                           { label: "Medium", count: summary.medium_count, color: "bg-amber-500", textColor: "text-amber-700 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-950/30" },
                           { label: "Reject", count: summary.reject_count, color: "bg-red-400", textColor: "text-red-700 dark:text-red-400", bg: "bg-red-50 dark:bg-red-950/30" },
                         ].map(t => {
-  const pct = summary.total_applicants ? Math.round(t.count / summary.total_applicants * 100) : 0;
+              const pct = summary.total_applicants ? Math.round(t.count / summary.total_applicants * 100) : 0;
                           return (
                             <div key={t.label} className="space-y-1.5">
                               <div className="flex items-center justify-between text-sm">
@@ -1473,16 +1474,16 @@ export default function JobDetails() {
                       </CardHeader>
                       <CardContent className="space-y-2">
                         {rankings.slice(0, 5).map((r, idx) => (
-                          <div key={r.candidate_id} className={cn("flex items-center gap-3 p-2 rounded-lg", idx === 0  "bg-amber-50/60 dark:bg-amber-900/20" : "hover:bg-muted/40")}>
-  <span className={cn("font-bold text-base w-6 text-center shrink-0", idx === 0 ? "text-amber-500" : idx === 1 ? "text-slate-400" : idx === 2 ? "text-amber-700" : "text-muted-foreground")}>
-  {idx === 0 ? '' : idx === 1 ? '' : idx === 2 ? '' : r.rank}
+                          <div key={r.candidate_id} className={cn("flex items-center gap-3 p-2 rounded-lg", idx === 0 ? "bg-amber-50/60 dark:bg-amber-900/20" : "hover:bg-muted/40")}>
+                            <span className={cn("font-bold text-base w-6 text-center shrink-0", idx === 0 ? "text-amber-500" : idx === 1 ? "text-slate-400" : idx === 2 ? "text-amber-700" : "text-muted-foreground")}>
+                              {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : r.rank}
                             </span>
                             <div className="flex-1 min-w-0">
                               <p className="font-medium text-sm truncate">{r.name || "Unknown"}</p>
                               <p className="text-xs text-muted-foreground truncate">{r.email || "-"}</p>
                             </div>
                             <div className="text-right shrink-0">
-  <p className="font-mono font-bold text-sm">{r.final_score != null ? `${r.final_score.toFixed(1)}%` : `${r.resume_score.toFixed(1)}%`}</p>
+                              <p className="font-mono font-bold text-sm">{r.final_score != null ? `${r.final_score.toFixed(1)}%` : `${r.resume_score.toFixed(1)}%`}</p>
                               <TagBadge tag={r.tag} />
                             </div>
                           </div>
@@ -1538,12 +1539,12 @@ export default function JobDetails() {
                             <button key={tag} onClick={() => { setRankingsTagFilter(tag); setRankingsPage(1); }}
                               className={cn("px-2.5 py-1 rounded text-xs font-medium border transition-colors",
                                 rankingsTagFilter === tag
-                                   tag === 'Strong' ? 'bg-emerald-100 border-emerald-400 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-  : tag === 'Medium' ? 'bg-amber-100 border-amber-400 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
-  : tag === 'Reject' ? 'bg-red-100 border-red-400 text-red-800 dark:bg-red-900/40 dark:text-red-300'
-  : 'bg-primary text-primary-foreground border-primary'
-  : 'bg-background text-muted-foreground border-border hover:bg-muted'
-  )}>{tag === 'all' ? 'All' : tag}</button>
+                                  ? tag === 'Strong' ? 'bg-emerald-100 border-emerald-400 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                    : tag === 'Medium' ? 'bg-amber-100 border-amber-400 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                                    : tag === 'Reject' ? 'bg-red-100 border-red-400 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                                    : 'bg-primary text-primary-foreground border-primary'
+                                  : 'bg-background text-muted-foreground border-border hover:bg-muted'
+                              )}>{tag === 'all' ? 'All' : tag}</button>
                           ))}
                         </div>
                       </div>
@@ -1573,15 +1574,15 @@ export default function JobDetails() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {pageRows.length === 0  (
+                          {pageRows.length === 0 ? (
                             <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">No candidates match your filters</TableCell></TableRow>
-  ) : pageRows.map((r) => {
+                          ) : pageRows.map((r) => {
                             const globalIdx = rankings.findIndex(x => x.candidate_id === r.candidate_id);
                             return (
-                              <TableRow key={r.candidate_id} className={globalIdx < 3  "bg-amber-50/30 dark:bg-amber-900/10" : ""}>
+                              <TableRow key={r.candidate_id} className={globalIdx < 3 ? "bg-amber-50/30 dark:bg-amber-900/10" : ""}>
                                 <TableCell>
-  <span className={cn("font-bold text-base", globalIdx === 0 ? "text-amber-500" : globalIdx === 1 ? "text-slate-400" : globalIdx === 2 ? "text-amber-700" : "text-muted-foreground")}>
-  {globalIdx === 0 ? '' : globalIdx === 1 ? '' : globalIdx === 2 ? '' : r.rank}
+                                  <span className={cn("font-bold text-base", globalIdx === 0 ? "text-amber-500" : globalIdx === 1 ? "text-slate-400" : globalIdx === 2 ? "text-amber-700" : "text-muted-foreground")}>
+                                    {globalIdx === 0 ? '🥇' : globalIdx === 1 ? '🥈' : globalIdx === 2 ? '🥉' : r.rank}
                                   </span>
                                 </TableCell>
                                 <TableCell>
@@ -1590,8 +1591,8 @@ export default function JobDetails() {
                                 </TableCell>
                                 <TableCell><TagBadge tag={r.tag} /></TableCell>
                                 <TableCell><span className="font-mono text-sm">{r.resume_score.toFixed(1)}%</span></TableCell>
-  <TableCell>{r.quiz_pct != null ? <span className="font-mono text-sm">{r.quiz_pct.toFixed(1)}%</span> : <span className="text-muted-foreground text-xs"></span>}</TableCell>
-  <TableCell>{r.final_score != null ? <span className="font-mono font-bold">{r.final_score.toFixed(1)}%</span> : <span className="text-muted-foreground text-xs"></span>}</TableCell>
+                                <TableCell>{r.quiz_pct != null ? <span className="font-mono text-sm">{r.quiz_pct.toFixed(1)}%</span> : <span className="text-muted-foreground text-xs">—</span>}</TableCell>
+                                <TableCell>{r.final_score != null ? <span className="font-mono font-bold">{r.final_score.toFixed(1)}%</span> : <span className="text-muted-foreground text-xs">—</span>}</TableCell>
                                 <TableCell>
                                   {r.passed === true && <span className="flex items-center gap-1 text-emerald-600 text-xs font-medium"><CheckCircle2 className="h-3 w-3" /> Pass</span>}
                                   {r.passed === false && <span className="flex items-center gap-1 text-red-500 text-xs font-medium"><XCircle className="h-3 w-3" /> Fail</span>}
@@ -1612,7 +1613,7 @@ export default function JobDetails() {
                           {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                             const offset = Math.max(0, Math.min(safePage - 3, totalPages - 5));
                             const pg = i + 1 + offset;
-  return <Button key={pg} variant={pg === safePage ? "default" : "outline"} size="sm" onClick={() => setRankingsPage(pg)} className="h-7 w-7 p-0 text-xs">{pg}</Button>;
+              return <Button key={pg} variant={pg === safePage ? "default" : "outline"} size="sm" onClick={() => setRankingsPage(pg)} className="h-7 w-7 p-0 text-xs">{pg}</Button>;
                           })}
                           <Button variant="outline" size="sm" disabled={safePage === totalPages} onClick={() => setRankingsPage(p => p + 1)} className="h-7 px-2 text-xs"></Button>
                           <Button variant="outline" size="sm" disabled={safePage === totalPages} onClick={() => setRankingsPage(totalPages)} className="h-7 px-2 text-xs"></Button>
@@ -1626,13 +1627,13 @@ export default function JobDetails() {
               {/*  SKILL GAP  */}
               {analyticsSubTab === 'skillgap' && (
                 <div className="space-y-4">
-                  {skillGaps.length === 0  (
+                  {skillGaps.length === 0 ? (
                     <Card className="p-12 text-center">
                       <BarChart3 className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
                       <p className="font-medium">No skill gap data yet</p>
                       <p className="text-sm text-muted-foreground">Upload and process resumes to populate skill gap analysis.</p>
                     </Card>
-  ) : (
+                  ) : (
                     <>
                       <div className="grid grid-cols-3 gap-3">
                         {(() => {
@@ -1674,7 +1675,7 @@ export default function JobDetails() {
                                   <span className="text-muted-foreground font-mono text-xs">{g.candidate_match_pct.toFixed(0)}% match</span>
                                 </div>
                                 <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-  <div className={cn("h-full rounded-full transition-all", g.gap_pct > 70 ? "bg-destructive" : g.gap_pct > 40 ? "bg-amber-500" : "bg-emerald-500")} style={{ width: `${g.candidate_match_pct}%` }} />
+                                  <div className={cn("h-full rounded-full transition-all", g.gap_pct > 70 ? "bg-destructive" : g.gap_pct > 40 ? "bg-amber-500" : "bg-emerald-500")} style={{ width: `${g.candidate_match_pct}%` }} />
                                 </div>
                               </div>
                             ))}
@@ -1721,12 +1722,12 @@ export default function JobDetails() {
               </DialogHeader>
 
               <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
-                {questions.length === 0  (
+                {questions.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
                     <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                     <p className="text-sm">Loading questions...</p>
                   </div>
-  ) : questions.map((q: any, idx: number) => (
+                ) : questions.map((q: any, idx: number) => (
                   <div key={q.id} className="rounded-xl border bg-card p-4 space-y-3">
                     <div className="flex items-start gap-3">
                       <span className="shrink-0 h-6 w-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center mt-0.5">
@@ -1748,8 +1749,8 @@ export default function JobDetails() {
                     <div className="grid grid-cols-2 gap-2 pl-9">
                       {(q.options || []).map((opt: string, oi: number) => (
                         <div key={oi} className={`flex items-start gap-2 text-xs px-3 py-2 rounded-lg border transition-colors ${oi === q.correct_answer
-                             'bg-emerald-50 border-emerald-300 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-700 dark:text-emerald-300 font-medium'
-  : 'bg-muted/30 border-border/60 text-muted-foreground'
+                          ? 'bg-emerald-50 border-emerald-300 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-700 dark:text-emerald-300 font-medium'
+                          : 'bg-muted/30 border-border/60 text-muted-foreground'
                           }`}>
                           <span className="font-mono text-[10px] font-bold opacity-50 shrink-0 mt-px">{['A', 'B', 'C', 'D'][oi]}</span>
                           <span className="leading-snug">{opt}</span>
@@ -1835,7 +1836,7 @@ export default function JobDetails() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEmailModalOpen(false)}>Cancel</Button>
             <Button onClick={handleSendDraftedEmail} disabled={sendingEmail}>
-  {sendingEmail ? "Dispatching..." : <><Send className="mr-2 h-4 w-4" /> Send Real Email</>}
+            {sendingEmail ? "Dispatching..." : <><Send className="mr-2 h-4 w-4" /> Send Real Email</>}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1843,8 +1844,6 @@ export default function JobDetails() {
     </div>
   );
 }
-
-
 
 
 
