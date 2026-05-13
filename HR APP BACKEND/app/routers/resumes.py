@@ -9,11 +9,11 @@ from app.schemas import (
 from app.config import settings
 from app.evals.deepeval_service import evaluator as deepeval_evaluator
 from app.services.mlflow_service import push_eval_to_mlflow as push_eval_to_langfuse  # MLflow replacement
+from app.services.mlflow_service import mlflow_track_llm
 from app.services.notification_service import push_notification, push_to_candidate_by_email
 from app.services.gemini_service import observe  # Real MLflow trace decorator
 from app.services.langfuse_service import langfuse_context
 from app.services import gemini_service, file_service, scoring_service, encryption_service, resume_fallback_parser
-from app.agents.harness import HarnessAgent
 from app.services.auth_service import require_hr, log_action
 from app.routers.resume_pool import ImportFromPoolRequest, import_from_pool_impl
 from app.constants.scoring import (
@@ -45,14 +45,17 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Q
 import asyncio
 import hashlib
 import html
+import json
 import io
 import logging
 import math
 import os
 import re
 import tempfile
+import time
 from datetime import datetime, timezone
 from uuid import uuid4
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +81,235 @@ _AI_SEMAPHORE = asyncio.Semaphore(max(1, _ai_limit))
 
 def _ai_degraded_mode_active() -> bool:
     return bool(settings.AI_FAIL_FAST_ON_UNAVAILABLE and not gemini_service.is_realtime_ai_available())
+
+
+def _harness_base_url() -> str:
+    port = int(getattr(settings, "APP_PORT", 8000) or 8000)
+    return f"http://127.0.0.1:{port}/harness"
+
+
+def _build_harness_resume_scoring_task(
+    filename: str,
+    text: str,
+    parsed_job: dict,
+    parsed_resume: dict,
+) -> str:
+    resume_text = (text or "")[:12000]
+    task_spec = {
+        "filename": filename,
+        "job": parsed_job,
+        "resume": parsed_resume,
+    }
+    return (
+        "You are an HR resume scoring agent.\n"
+        "Score this resume against the provided job and return ONLY strict JSON.\n"
+        "Required JSON keys: "
+        "resume_score, skill_match_pct, experience_match_pct, project_relevance_pct, "
+        "education_match_pct, location_match_pct, vector_similarity, tag, "
+        "matched_must_have, missing_must_have, matched_good_to_have, missing_good_to_have, "
+        "reasoning, domain_fit, seniority_match, hire_recommendation, red_flags, "
+        "standout_factors, confidence, candidate_tier, ai_score_used.\n"
+        "Rules: all scores must be numeric 0-100, tag must be one of strong|medium|reject.\n"
+        f"Job + parsed resume context JSON:\n{json.dumps(task_spec, ensure_ascii=False)}\n"
+        f"Raw resume text excerpt:\n{resume_text}\n"
+    )
+
+
+def _extract_harness_score_result(payload: dict) -> dict | None:
+    if not isinstance(payload, dict):
+        return None
+    result = payload.get("result")
+    candidates: list[dict] = []
+    if isinstance(result, dict):
+        candidates.append(result)
+        nested = result.get("score_result")
+        if isinstance(nested, dict):
+            candidates.append(nested)
+        for key in ("output", "final_output", "data", "response"):
+            raw = result.get(key)
+            if isinstance(raw, dict):
+                candidates.append(raw)
+            elif isinstance(raw, str):
+                try:
+                    parsed = json.loads(raw)
+                except Exception:
+                    parsed = None
+                if isinstance(parsed, dict):
+                    candidates.append(parsed)
+
+    for candidate in candidates:
+        if "resume_score" in candidate:
+            return candidate
+    return None
+
+
+def _coerce_harness_pct(value: object) -> float:
+    try:
+        return float(value or 0.0)
+    except Exception:
+        return 0.0
+
+
+def _mlflow_log_harness_response(
+    *,
+    event: str,
+    status_code: int,
+    run_id: str | None = None,
+    run_status: str | None = None,
+) -> None:
+    mlflow_uri = (os.environ.get("MLFLOW_TRACKING_URI") or "").strip()
+    if not settings.HARNESS_TRACE_RECORDER_ENABLED or not mlflow_uri:
+        return
+    try:
+        import mlflow
+
+        mlflow.log_metric(f"harness.{event}.http_status_code", float(status_code))
+        if run_id:
+            mlflow.log_param("harness.run_id", run_id)
+        if run_status:
+            status_codes = {
+                "queued": 1.0,
+                "running": 2.0,
+                "completed": 3.0,
+                "failed": 4.0,
+                "cancelled": 5.0,
+                "budget_exceeded": 6.0,
+            }
+            mlflow.log_metric(
+                f"harness.{event}.run_status_code",
+                status_codes.get(run_status.lower(), 0.0),
+            )
+    except Exception:
+        # MLflow tracing must remain non-fatal for recruiter flows.
+        pass
+
+
+async def _post_harness_run_for_scoring(
+    *,
+    task: str,
+    tenant_id: str,
+    auth_header: str | None,
+    metadata: dict,
+) -> dict | None:
+    base_url = _harness_base_url()
+    headers = {"Content-Type": "application/json"}
+    if auth_header:
+        headers["Authorization"] = auth_header
+
+    payload = {
+        "agent_type": "base",
+        "task": task,
+        "tenant_id": tenant_id,
+        "context": metadata,
+        "metadata": metadata,
+    }
+
+    async def _run_call() -> dict | None:
+        timeout_s = max(5.0, float(getattr(settings, "AI_REQUEST_TIMEOUT_SECONDS", 12.0)))
+        timeout = httpx.Timeout(timeout_s)
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            create_resp = await client.post(f"{base_url}/runs", json=payload, headers=headers)
+            _mlflow_log_harness_response(
+                event="create_run",
+                status_code=create_resp.status_code,
+            )
+            # Compatibility fallback: some harness builds only allow sql/code.
+            if create_resp.status_code >= 400:
+                text = create_resp.text or ""
+                if create_resp.status_code == 400 and "Unknown agent_type" in text:
+                    payload_sql = {**payload, "agent_type": "sql"}
+                    create_resp = await client.post(
+                        f"{base_url}/runs",
+                        json=payload_sql,
+                        headers=headers,
+                    )
+                    _mlflow_log_harness_response(
+                        event="create_run_retry_sql",
+                        status_code=create_resp.status_code,
+                    )
+
+            if create_resp.status_code >= 400:
+                logger.warning(
+                    "Harness create-run failed status=%s body=%s",
+                    create_resp.status_code,
+                    (create_resp.text or "")[:500],
+                )
+                return None
+
+            try:
+                run_record = create_resp.json()
+            except Exception:
+                logger.warning("Harness create-run response was not valid JSON")
+                return None
+
+            if not isinstance(run_record, dict):
+                logger.warning("Harness create-run response shape invalid: %s", type(run_record).__name__)
+                return None
+
+            score_result = _extract_harness_score_result(run_record)
+            if score_result is not None:
+                return score_result
+
+            run_id = str(run_record.get("run_id") or "").strip()
+            if not run_id:
+                return None
+
+            deadline = time.monotonic() + min(30.0, timeout_s * 2.0)
+            terminal_statuses = {"completed", "failed", "cancelled", "budget_exceeded"}
+
+            while time.monotonic() < deadline:
+                await asyncio.sleep(0.6)
+                status_resp = await client.get(f"{base_url}/runs/{run_id}", headers=headers)
+                _mlflow_log_harness_response(
+                    event="poll_run",
+                    status_code=status_resp.status_code,
+                    run_id=run_id,
+                )
+                if status_resp.status_code >= 400:
+                    logger.warning(
+                        "Harness run polling failed run_id=%s status=%s",
+                        run_id,
+                        status_resp.status_code,
+                    )
+                    return None
+                try:
+                    poll_record = status_resp.json()
+                except Exception:
+                    logger.warning("Harness poll response was not valid JSON run_id=%s", run_id)
+                    return None
+                if not isinstance(poll_record, dict):
+                    return None
+
+                score_result = _extract_harness_score_result(poll_record)
+                if score_result is not None:
+                    return score_result
+
+                status_value = str(poll_record.get("status") or "").lower()
+                _mlflow_log_harness_response(
+                    event="poll_run_state",
+                    status_code=200,
+                    run_id=run_id,
+                    run_status=status_value,
+                )
+                if status_value in terminal_statuses:
+                    return None
+
+            logger.warning("Harness run timed out waiting for score_result")
+            return None
+
+    mlflow_uri = (os.environ.get("MLFLOW_TRACKING_URI") or "").strip()
+    if settings.HARNESS_TRACE_RECORDER_ENABLED and mlflow_uri:
+        async with mlflow_track_llm(
+            task_name="harness_runs_post",
+            run_name="harness_resume_scoring",
+            tags={
+                "component": "resumes",
+                "orchestrator": "harness_http",
+            },
+        ):
+            return await _run_call()
+    return await _run_call()
 
 
 def _job_has_meaningful_criteria(job: JobDescription) -> bool:
@@ -1016,17 +1248,15 @@ async def _compute_resume_data_via_harness(
     content: bytes,
     text: str,
     job: JobDescription,
+    tenant_id: str,
+    auth_header: str | None = None,
     user_email: str | None = None,
     pre_parsed_data: dict | None = None,
     fast_mode: bool = False,
 ) -> dict:
     """
-    Optional multi-agent path that uses HarnessAgent orchestration for:
-      - resume parsing
-      - embedding generation
-      - scoring
-
-    Falls back to the native scorer if harness execution fails.
+    Optional upstream harness path via POST /harness/runs for resume scoring.
+    Falls back to the native scorer if harness execution fails or times out.
     """
     if _ai_degraded_mode_active():
         fast_mode = True
@@ -1042,7 +1272,6 @@ async def _compute_resume_data_via_harness(
             fast_mode=True,
         )
 
-    h = HarnessAgent.instance()
     file_hash = _sha256(content)
     jd_hash = _jd_signature_hash(job)
 
@@ -1059,33 +1288,30 @@ async def _compute_resume_data_via_harness(
         "location": job.location,
     }
 
-    base_state = {
+    parsed = pre_parsed_data or _coerce_parsed_resume_payload(None, text, job)
+    harness_task = _build_harness_resume_scoring_task(
+        filename=filename,
+        text=text,
+        parsed_job=parsed_job,
+        parsed_resume=parsed,
+    )
+    harness_metadata = {
+        "tenant_id": tenant_id,
+        "job_id": str(job.id),
         "filename": filename,
-        "text": text,
-        "parsed_job": parsed_job,
-        "skip_ai_scoring": bool(fast_mode),
+        "job_title": parsed_job.get("title", ""),
     }
 
-    try:
-        if pre_parsed_data is None:
-            parse_embed = await h.run_parallel(["resume_parser_agent", "embedding_agent"], base_state)
-            parsed = parse_embed.get("parsed_resume") or {}
-            resume_embedding = parse_embed.get("embedding") or []
-        else:
-            parsed = pre_parsed_data
-            emb = await h.run_agent("embedding_agent", base_state)
-            resume_embedding = emb.get("embedding") or []
-
-        score_updates = await h.run_agent(
-            "scoring_agent",
-            {**base_state, "parsed_resume": parsed, "embedding": resume_embedding},
-        )
-        score_result = score_updates.get("score_result") or {}
-    except Exception as exc:
+    score_result = await _post_harness_run_for_scoring(
+        task=harness_task,
+        tenant_id=tenant_id,
+        auth_header=auth_header,
+        metadata=harness_metadata,
+    )
+    if score_result is None:
         logger.warning(
-            "Harness pipeline failed for %s, falling back to native scoring: %s",
+            "Harness run did not return score_result for %s; falling back to native scoring.",
             filename,
-            exc,
         )
         return await _compute_resume_data_from_bytes(
             filename=filename,
@@ -1097,6 +1323,7 @@ async def _compute_resume_data_via_harness(
             pre_parsed_data=pre_parsed_data,
             fast_mode=fast_mode,
         )
+    resume_embedding = score_result.get("embedding") if isinstance(score_result.get("embedding"), list) else []
 
     resume_path = await file_service.save_file(content, filename)
 
@@ -1151,13 +1378,13 @@ async def _compute_resume_data_via_harness(
         "raw_resume_text": encryption_service.encrypt_text(text[:40000]),
         "resume_path": resume_path,
         "embedding": resume_embedding,
-        "skill_match_pct": float(score_result.get("skill_match_pct") or 0.0),
-        "experience_match_pct": float(score_result.get("experience_match_pct") or 0.0),
-        "project_relevance_pct": float(score_result.get("project_relevance_pct") or 0.0),
-        "education_match_pct": float(score_result.get("education_match_pct") or 0.0),
-        "location_match_pct": float(score_result.get("location_match_pct") or 0.0),
-        "vector_similarity": float(score_result.get("vector_similarity") or 0.0),
-        "resume_score": float(score_result.get("resume_score") or 0.0),
+        "skill_match_pct": _coerce_harness_pct(score_result.get("skill_match_pct")),
+        "experience_match_pct": _coerce_harness_pct(score_result.get("experience_match_pct")),
+        "project_relevance_pct": _coerce_harness_pct(score_result.get("project_relevance_pct")),
+        "education_match_pct": _coerce_harness_pct(score_result.get("education_match_pct")),
+        "location_match_pct": _coerce_harness_pct(score_result.get("location_match_pct")),
+        "vector_similarity": _coerce_harness_pct(score_result.get("vector_similarity")),
+        "resume_score": _coerce_harness_pct(score_result.get("resume_score")),
         "score_breakdown": score_breakdown,
         "tag": tag,
     }
@@ -1517,6 +1744,8 @@ async def upload_bulk_resumes(
                     content,
                     text,
                     job,
+                    tenant_id=str(user.id),
+                    auth_header=request.headers.get("authorization"),
                     user_email=user.email,
                     pre_parsed_data=pre_parsed,
                     fast_mode=bulk_fast_mode,
@@ -2770,6 +2999,133 @@ async def bulk_delete_candidates(
         raise HTTPException(status_code=500, detail="Failed to delete candidates.")
 
 
+@router.post("/jobs/{job_id}/refresh-jd-similarity")
+@limiter.limit(AI_SCORING_RANKING_RATE_LIMIT)
+async def refresh_job_jd_similarity(
+    request: Request,
+    job_id: str,
+    limit: int = Query(200, ge=1, le=2000),
+    include_archived: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_hr),
+):
+    """
+    Backfill candidate embeddings and vector_similarity for one job.
+
+    Intended for candidates previously processed in degraded/fast mode, where
+    resume embeddings were skipped and JD similarity stayed at 0.
+    """
+    job = await _assert_job_owner(job_id, user, db)
+
+    if _ai_degraded_mode_active():
+        raise HTTPException(
+            status_code=503,
+            detail="AI is currently in degraded mode. Retry similarity refresh once AI is healthy.",
+        )
+
+    if not (job.embedding or []):
+        raise HTTPException(
+            status_code=422,
+            detail="Job embedding is missing. Recreate or re-parse the job before refreshing JD similarity.",
+        )
+
+    # Fail fast when embeddings are unavailable, instead of returning a long
+    # list of per-candidate failures.
+    async with _AI_SEMAPHORE:
+        probe_embedding = await gemini_service.get_embedding("jd similarity refresh health check")
+    if not probe_embedding:
+        raise HTTPException(
+            status_code=503,
+            detail="Embedding service is currently unavailable. Retry when AI connectivity is restored.",
+        )
+
+    from sqlalchemy import or_ as _or_archived
+
+    filters = [Candidate.job_id == job.id]
+    if not include_archived:
+        filters.append(_or_archived(Candidate.is_archived == False, Candidate.is_archived.is_(None)))
+
+    candidates = (await db.execute(
+        select(Candidate)
+        .where(*filters)
+        .order_by(Candidate.created_at.desc())
+        .limit(limit)
+    )).scalars().all()
+
+    processed = 0
+    updated = 0
+    skipped_no_text = 0
+    failed = 0
+    failed_candidates: list[dict[str, str]] = []
+
+    for c in candidates:
+        processed += 1
+
+        try:
+            if not c.raw_resume_text:
+                skipped_no_text += 1
+                continue
+
+            resume_text = encryption_service.decrypt_text(c.raw_resume_text) or ""
+            if not resume_text.strip():
+                skipped_no_text += 1
+                continue
+
+            async with _AI_SEMAPHORE:
+                resume_embedding = await gemini_service.get_embedding(resume_text[:12000])
+            if not resume_embedding:
+                failed += 1
+                failed_candidates.append({
+                    "candidate_id": str(c.id),
+                    "reason": "embedding_unavailable",
+                })
+                continue
+
+            c.embedding = resume_embedding
+            c.vector_similarity = scoring_service.cosine_similarity(resume_embedding, job.embedding or [])
+
+            breakdown = dict(c.score_breakdown or {})
+            breakdown["jd_similarity_refreshed_at"] = _now_iso()
+            # Candidate was successfully refreshed against live AI.
+            breakdown["fast_mode"] = False
+            breakdown["degraded_mode"] = False
+            c.score_breakdown = breakdown
+            updated += 1
+        except Exception as exc:
+            failed += 1
+            failed_candidates.append({
+                "candidate_id": str(c.id),
+                "reason": str(exc)[:200],
+            })
+
+    await log_action(
+        db,
+        user.id,
+        "REFRESH_JD_SIMILARITY",
+        "job_description",
+        job_id,
+        details={
+            "processed": processed,
+            "updated": updated,
+            "skipped_no_text": skipped_no_text,
+            "failed": failed,
+            "include_archived": include_archived,
+            "limit": limit,
+        },
+    )
+    await db.commit()
+
+    return {
+        "message": "JD similarity refresh completed",
+        "job_id": job_id,
+        "processed": processed,
+        "updated": updated,
+        "skipped_no_text": skipped_no_text,
+        "failed": failed,
+        "failed_candidates": failed_candidates[:25],
+    }
+
+
 #  Dynamic /{candidate_id} routes (must come after all static routes) 
 
 @router.get("/{candidate_id}", response_model=CandidateOut)
@@ -3049,4 +3405,3 @@ async def get_candidate_quiz_result(
         "skill_breakdown": attempt.skill_breakdown or {},
         "difficulty_breakdown": attempt.difficulty_breakdown or {},
     }
-

@@ -266,3 +266,31 @@ export const getCandidateQuizResult = async (candidateId: string): Promise<Candi
   const response = await api.get<CandidateQuizResult>(`/resumes/${candidateId}/quiz-result`);
   return response.data;
 };
+
+export interface RefreshJDSimilarityResult {
+  message: string;
+  job_id: string;
+  processed: number;
+  updated: number;
+  skipped_no_text: number;
+  failed: number;
+  failed_candidates?: Array<{ candidate_id: string; reason: string }>;
+}
+
+export const refreshJobJDSimilarity = async (
+  jobId: string,
+  opts?: { limit?: number; includeArchived?: boolean },
+): Promise<RefreshJDSimilarityResult> => {
+  const response = await api.post<RefreshJDSimilarityResult>(
+    `/resumes/jobs/${jobId}/refresh-jd-similarity`,
+    null,
+    {
+      params: {
+        limit: opts?.limit ?? 500,
+        include_archived: opts?.includeArchived ?? false,
+      },
+      timeout: 300_000,
+    }
+  );
+  return response.data;
+};

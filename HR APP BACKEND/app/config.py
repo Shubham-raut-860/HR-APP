@@ -97,7 +97,7 @@ class Settings(BaseSettings):
     AI_CIRCUIT_BREAKER_SECONDS: int = 30
     AI_CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = 2
     AI_TRANSIENT_STATUS_CODES: str = "408,409,425,429,500,502,503,504"
-    BULK_USE_HARNESS_PIPELINE: bool = False
+    BULK_USE_HARNESS_PIPELINE: bool = True
     BULK_ASYNC_MAX_CONCURRENT_JOBS: int = 2
     BULK_EXTRACT_CONCURRENCY: int = 8
     BULK_PARSE_CONCURRENCY: int = 16
@@ -148,6 +148,11 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173"
     FRONTEND_URL: str = "http://localhost:5173"
+    HARNESS_MOUNT_ENABLED: bool = True
+    HARNESS_ENVIRONMENT: str = "dev"
+    HARNESS_JWT_SECRET_KEY: str = ""
+    HARNESS_ADAPTER_ENABLED: bool = False
+    HARNESS_TRACE_RECORDER_ENABLED: bool = False
 
     # ─── Rate limiting ────────────────────────────────────────────────────────
     # BUG 9 FIX: comma-separated list of trusted reverse-proxy IPs.
