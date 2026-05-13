@@ -26,11 +26,14 @@ from app.schemas import (
 )
 from app.services.auth_service import get_current_user, require_hr, require_candidate, log_action
 from app.services import gemini_service, scoring_service, file_service
+from app.services import harness_agent_client
+from app.services.harness_agent_client import HarnessAgentError
 from app.config import settings
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/quiz", tags=["Quiz"])
 logger = logging.getLogger(__name__)
+_gemini = gemini_service
 
 
 class QuizMagicLinkContext(BaseModel):
@@ -280,6 +283,7 @@ async def _assert_quiz_owner(quiz_id: str, user: User, db: AsyncSession) -> Quiz
 
 @router.post("/generate", response_model=QuizOut, status_code=201)
 async def generate_quiz(
+    request: Request,
     body: QuizGenerateRequest,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_hr),
@@ -296,13 +300,34 @@ async def generate_quiz(
     all_skills = (jd.must_have_skills or []) + (jd.good_to_have_skills or [])
 
     try:
-        questions_data = await gemini_service.generate_quiz_questions(
-            jd_text=jd.raw_text or jd.description or jd.title,
-            skills=all_skills,
-            easy=settings.QUIZ_EASY_COUNT,
-            medium=settings.QUIZ_MEDIUM_COUNT,
-            hard=settings.QUIZ_HARD_COUNT,
+        harness_result = await harness_agent_client.run_agent(
+            "quiz_generator",
+            {
+                "jd_text": jd.raw_text or jd.description or jd.title,
+                "skills": all_skills,
+                "easy": settings.QUIZ_EASY_COUNT,
+                "medium": settings.QUIZ_MEDIUM_COUNT,
+                "hard": settings.QUIZ_HARD_COUNT,
+            },
+            request.headers.get("authorization"),
         )
+        questions_data = (
+            harness_result.get("questions")
+            if isinstance(harness_result, dict)
+            else []
+        )
+    except HarnessAgentError as exc:
+            logger.warning("Harness fallback quiz_generator: %s", exc)
+            try:
+                questions_data = await _gemini.generate_quiz_questions(
+                    jd_text=jd.raw_text or jd.description or jd.title,
+                    skills=all_skills,
+                    easy=settings.QUIZ_EASY_COUNT,
+                    medium=settings.QUIZ_MEDIUM_COUNT,
+                    hard=settings.QUIZ_HARD_COUNT,
+                )
+            except Exception:
+                questions_data = []
     except Exception:
         questions_data = []
 
@@ -1215,10 +1240,33 @@ async def evaluate_code_endpoint(
     # BUG-18 FIX: Enforce a time limit on code evaluation to prevent
     # infinite loops or excessively slow LLM responses from hanging the request.
     try:
-        result = await asyncio.wait_for(
-            gemini_service.evaluate_code_submission(body.problem, body.code, body.language),
-            timeout=60.0,  # 60-second hard limit
-        )
+        try:
+            harness_result = await asyncio.wait_for(
+                harness_agent_client.run_agent(
+                    "code_evaluator",
+                    {
+                        "problem_statement": body.problem,
+                        "user_code": body.code,
+                        "language": body.language,
+                    },
+                    request.headers.get("authorization"),
+                    timeout_s=70.0,
+                ),
+                timeout=75.0,
+            )
+            result = (
+                harness_result.get("code_eval_result")
+                if isinstance(harness_result, dict)
+                else None
+            )
+            if not isinstance(result, dict):
+                raise HarnessAgentError("code_evaluator", "invalid_result", str(harness_result))
+        except HarnessAgentError as exc:
+            logger.warning("Harness fallback code_evaluator: %s", exc)
+            result = await asyncio.wait_for(
+                _gemini.evaluate_code_submission(body.problem, body.code, body.language),
+                timeout=60.0,  # 60-second hard limit
+            )
     except asyncio.TimeoutError:
         raise HTTPException(status_code=408, detail="Code evaluation timed out (60s limit)")
 

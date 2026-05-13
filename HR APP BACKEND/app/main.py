@@ -15,9 +15,12 @@ import asyncio
 import uuid
 import os
 import sys
+import time
+import fnmatch
 from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+from typing import Any
 
 # ─── Third-party ──────────────────────────────────────────────────────────────
 from fastapi import FastAPI, Request, status
@@ -147,6 +150,158 @@ from app.routers import evals as evals_router
 logger = logging.getLogger(__name__)
 _HARNESS_AVAILABLE = True
 _HARNESS_SUBAPP: FastAPI | None = None
+
+
+class _InMemoryRedisLike:
+    """
+    Minimal async Redis-like store for local/dev fallback when Redis is unavailable.
+    Supports only the subset used by harness run routes and runner lifecycle.
+    """
+
+    def __init__(self) -> None:
+        self._kv: dict[str, Any] = {}
+        self._hashes: dict[str, dict[str, str]] = {}
+        self._streams: dict[str, list[tuple[str, dict[str, str]]]] = {}
+        self._seq: int = 0
+        self._lock = asyncio.Lock()
+
+    async def ping(self) -> bool:
+        return True
+
+    async def aclose(self) -> None:
+        return None
+
+    async def set(self, key: str, value: Any) -> bool:
+        async with self._lock:
+            self._kv[str(key)] = value
+        return True
+
+    async def get(self, key: str) -> Any:
+        async with self._lock:
+            return self._kv.get(str(key))
+
+    async def delete(self, *keys: str) -> int:
+        removed = 0
+        async with self._lock:
+            for key in keys:
+                k = str(key)
+                if k in self._kv:
+                    del self._kv[k]
+                    removed += 1
+                if k in self._hashes:
+                    del self._hashes[k]
+                    removed += 1
+                if k in self._streams:
+                    del self._streams[k]
+                    removed += 1
+        return removed
+
+    async def hset(
+        self,
+        name: str,
+        key: str | None = None,
+        value: str | None = None,
+        mapping: dict[str, Any] | None = None,
+    ) -> int:
+        hname = str(name)
+        async with self._lock:
+            bucket = self._hashes.setdefault(hname, {})
+            added = 0
+            if mapping is not None:
+                for m_key, m_value in mapping.items():
+                    k = str(m_key)
+                    if k not in bucket:
+                        added += 1
+                    bucket[k] = str(m_value)
+                return added
+            if key is not None:
+                k = str(key)
+                if k not in bucket:
+                    added += 1
+                bucket[k] = "" if value is None else str(value)
+            return added
+
+    async def hgetall(self, name: str) -> dict[str, str]:
+        async with self._lock:
+            return dict(self._hashes.get(str(name), {}))
+
+    async def scan_iter(self, match: str | None = None, count: int = 100):
+        async with self._lock:
+            keys = list(self._kv.keys()) + list(self._hashes.keys()) + list(self._streams.keys())
+            seen: set[str] = set()
+            ordered: list[str] = []
+            for key in keys:
+                if key in seen:
+                    continue
+                seen.add(key)
+                ordered.append(key)
+        pattern = match or "*"
+        for key in ordered:
+            if fnmatch.fnmatch(key, pattern):
+                yield key
+
+    @staticmethod
+    def _stream_id_tuple(raw_id: str | bytes) -> tuple[int, int]:
+        if isinstance(raw_id, bytes):
+            raw_id = raw_id.decode("utf-8", errors="ignore")
+        sid = str(raw_id or "0-0")
+        if sid == "$":
+            return (2**63 - 1, 2**63 - 1)
+        if "-" not in sid:
+            try:
+                return (int(sid), 0)
+            except Exception:
+                return (0, 0)
+        left, right = sid.split("-", 1)
+        try:
+            return (int(left), int(right))
+        except Exception:
+            return (0, 0)
+
+    async def xadd(
+        self,
+        name: str,
+        fields: dict[str, Any],
+        id: str = "*",
+        maxlen: int | None = None,
+        approximate: bool = True,
+    ) -> str:
+        async with self._lock:
+            self._seq += 1
+            stream_id = id if id != "*" else f"{int(time.time() * 1000)}-{self._seq}"
+            normalized = {str(k): str(v) for k, v in (fields or {}).items()}
+            bucket = self._streams.setdefault(str(name), [])
+            bucket.append((stream_id, normalized))
+            if maxlen is not None and maxlen > 0 and len(bucket) > maxlen:
+                self._streams[str(name)] = bucket[-maxlen:]
+            return stream_id
+
+    async def xread(
+        self,
+        streams: dict[str, str],
+        count: int | None = None,
+        block: int | None = None,
+    ) -> list[tuple[str, list[tuple[str, dict[str, str]]]]]:
+        async with self._lock:
+            output: list[tuple[str, list[tuple[str, dict[str, str]]]]] = []
+            for stream_name, last_id in (streams or {}).items():
+                entries = self._streams.get(str(stream_name), [])
+                last_tuple = self._stream_id_tuple(last_id)
+                messages = [
+                    (entry_id, dict(fields))
+                    for entry_id, fields in entries
+                    if self._stream_id_tuple(entry_id) > last_tuple
+                ]
+                if count is not None and count > 0:
+                    messages = messages[:count]
+                if messages:
+                    output.append((str(stream_name), messages))
+            if output:
+                return output
+
+        if block:
+            await asyncio.sleep(max(0.0, float(block) / 1000.0))
+        return []
 
 
 def _env_flag_true(name: str, default: bool = False) -> bool:
@@ -324,8 +479,30 @@ def _mount_original_harness_app(app: FastAPI) -> bool:
         global _HARNESS_SUBAPP
         _configure_harness_runtime_env()
         from harness.api import deps as harness_deps
+        from harness.api.routes import runs as _harness_runs
         from harness.core.config import get_config as harness_get_config
         from harness.api.main import create_app as create_harness_app
+        _hr_agent_types: set[str] = {
+            "resume_parser",
+            "resume_scorer",
+            "jd_generator",
+            "jd_parser",
+            "quiz_generator",
+            "code_evaluator",
+            "candidate_ranker",
+            "resume_enhancer",
+            "resume_builder",
+            "cover_letter",
+            "embedding",
+            "notification",
+            "deduplication",
+            "career_analyst",
+        }
+        _harness_runs._ALLOWED_AGENT_TYPES.update(_hr_agent_types)
+        logger.info(
+            "Expanded /harness/runs allowed agent types with %d HR types",
+            len(_hr_agent_types),
+        )
         harness_get_config.cache_clear()
         harness_app = create_harness_app()
         _HARNESS_SUBAPP = harness_app
@@ -378,6 +555,11 @@ async def _start_harness_subapp_lifespan(exit_stack: AsyncExitStack) -> None:
         return
 
     await exit_stack.enter_async_context(harness_app.router.lifespan_context(harness_app))
+    if getattr(harness_app.state, "redis", None) is None:
+        harness_app.state.redis = _InMemoryRedisLike()
+        logger.warning(
+            "Harness sub-app Redis unavailable; using in-memory Redis fallback for local runtime."
+        )
     logger.info("Harness sub-app lifespan started by parent app lifecycle.")
 
 @asynccontextmanager
@@ -409,22 +591,26 @@ async def lifespan(app: FastAPI):
         # mlflow_service._init_mlflow() runs automatically and logs the result.
         # FIX: import in a thread to prevent blocking the event loop if the MLflow
         # server is unreachable (socket timeout can be ~30s by default).
-        try:
-            # Wrap in wait_for to prevent hang if MLflow tracking is unreachable
-            _mlflow_available = await asyncio.wait_for(
-                asyncio.to_thread(
-                    lambda: __import__("app.services.mlflow_service", fromlist=["_init_mlflow"])._init_mlflow()
-                ),
-                timeout=5.0
-            )
-        except Exception as _e:
-            logger.debug("Failed to initialize MLflow service: %s", _e)
-            _mlflow_available = False
-        if not _mlflow_available:
-            logger.warning(
-                "⚠️  MLflow tracking server not reachable — set MLFLOW_TRACKING_URI in .env "
-                "or start: mlflow server --host 127.0.0.1 --port 5000"
-            )
+        mlflow_env_uri = (os.environ.get("MLFLOW_TRACKING_URI") or "").strip()
+        if mlflow_env_uri:
+            try:
+                # Wrap in wait_for to prevent hang if MLflow tracking is unreachable
+                _mlflow_available = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        lambda: __import__("app.services.mlflow_service", fromlist=["_init_mlflow"])._init_mlflow()
+                    ),
+                    timeout=5.0
+                )
+            except Exception as _e:
+                logger.debug("Failed to initialize MLflow service: %s", _e)
+                _mlflow_available = False
+            if not _mlflow_available:
+                logger.warning(
+                    "⚠️  MLflow tracking server not reachable — set MLFLOW_TRACKING_URI in .env "
+                    "or start: mlflow server --host 127.0.0.1 --port 5000"
+                )
+        else:
+            logger.info("MLflow init skipped: MLFLOW_TRACKING_URI is not explicitly set in environment.")
 
         try:
             yield

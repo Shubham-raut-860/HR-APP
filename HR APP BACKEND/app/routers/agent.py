@@ -1,73 +1,55 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-
-import httpx
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Request
+import os
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import ValidationError
 
 from app.agents.graphs import build_resume_scoring_agents_graph
 from app.config import settings
 from app.models import User
 from app.services.auth_service import require_hr
+from app.services.mlflow_service import mlflow_track_llm
 
 router = APIRouter(prefix="/agent", tags=["Agent"])
 logger = logging.getLogger(__name__)
 
 
-def _harness_base_url() -> str:
-    port = int(getattr(settings, "APP_PORT", 8000) or 8000)
-    return f"http://127.0.0.1:{port}/harness"
-
-
-async def _send_harness_trace_record(
+async def _log_agent_score_to_mlflow(
     *,
-    request: Request,
     user: User,
     filename: str,
     score_result: dict,
 ) -> None:
     if not settings.HARNESS_TRACE_RECORDER_ENABLED:
         return
-
-    payload = {
-        "source": "agent.score-resume",
-        "tenant_id": str(user.id),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "context": {
-            "filename": filename,
-            "resume_score": score_result.get("resume_score"),
-            "tag": score_result.get("tag"),
-            "confidence": score_result.get("confidence"),
-        },
-    }
-
-    headers = {"Content-Type": "application/json"}
-    auth_header = request.headers.get("authorization")
-    if auth_header:
-        headers["Authorization"] = auth_header
+    if not (os.environ.get("MLFLOW_TRACKING_URI") or "").strip():
+        return
 
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(5.0)) as client:
-            resp = await client.post(
-                f"{_harness_base_url()}/traces",
-                json=payload,
-                headers=headers,
-            )
-        if resp.status_code >= 400:
-            logger.warning(
-                "Harness trace emit failed status=%s body=%s",
-                resp.status_code,
-                (resp.text or "")[:500],
-            )
+        async with mlflow_track_llm(
+            task_name="agent.score_resume",
+            run_name=f"agent.score-resume.{str(user.id)[:8]}",
+            tags={
+                "component": "agent_router",
+                "route": "/agent/score-resume",
+            },
+        ):
+            import mlflow
+
+            mlflow.log_param("filename", filename)
+            mlflow.log_metric("resume_score", float(score_result.get("resume_score") or 0.0))
+            mlflow.log_param("tag", str(score_result.get("tag") or ""))
+            mlflow.log_param("confidence", str(score_result.get("confidence") or ""))
+            reasoning = str(score_result.get("reasoning") or "")
+            if reasoning:
+                mlflow.log_text(reasoning, "agent_score_resume_reasoning.txt")
     except Exception as exc:
-        logger.warning("Harness trace emit failed (non-fatal): %s", exc)
+        logger.debug("MLflow agent trace non-fatal: %s", exc)
 
 
 @router.post("/score-resume")
 async def score_resume_with_agent(
-    request: Request,
     file: UploadFile = File(...),
     job_description: str = Form(...),
     user: User = Depends(require_hr),
@@ -113,8 +95,7 @@ async def score_resume_with_agent(
         logger.error("Agent score-resume returned incomplete score_result, missing keys: %s", missing_keys)
         raise HTTPException(status_code=422, detail="Incomplete scoring result")
 
-    await _send_harness_trace_record(
-        request=request,
+    await _log_agent_score_to_mlflow(
         user=user,
         filename=file.filename or "resume.pdf",
         score_result=score_result,

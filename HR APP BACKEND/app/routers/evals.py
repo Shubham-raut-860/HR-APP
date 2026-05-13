@@ -18,7 +18,7 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +28,7 @@ from app.config import settings
 from app.services.auth_service import require_hr
 from app.models import User
 from app.evals.eval_hub import eval_hub
+from app.evals.harness_agent_evals import eval_all_agents
 from app.services.gemini_service import observe  # Real MLflow trace decorator
 from app.services.langfuse_service import langfuse_context
 
@@ -338,4 +339,22 @@ async def list_metrics(current_user: User = Depends(require_hr)):
             ],
             "ragas": "N/A — JD generation is not a RAG operation",
         },
+    }
+
+
+@router.post("/harness-agents", summary="Run harness-backed HR agent smoke evals")
+async def run_harness_agent_evals(
+    request: Request,
+    current_user: User = Depends(require_hr),
+):
+    _ensure_evals_enabled()
+    auth_header = request.headers.get("authorization")
+    results = await eval_all_agents(auth_header)
+    passed = sum(1 for r in results if r.get("status") == "pass")
+    failed = sum(1 for r in results if r.get("status") != "pass")
+    return {
+        "total": len(results),
+        "passed": passed,
+        "failed": failed,
+        "results": results,
     }

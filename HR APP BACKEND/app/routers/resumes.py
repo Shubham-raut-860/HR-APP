@@ -14,6 +14,8 @@ from app.services.notification_service import push_notification, push_to_candida
 from app.services.gemini_service import observe  # Real MLflow trace decorator
 from app.services.langfuse_service import langfuse_context
 from app.services import gemini_service, file_service, scoring_service, encryption_service, resume_fallback_parser
+from app.services import harness_agent_client
+from app.services.harness_agent_client import HarnessAgentError
 from app.services.auth_service import require_hr, log_action
 from app.routers.resume_pool import ImportFromPoolRequest, import_from_pool_impl
 from app.constants.scoring import (
@@ -77,10 +79,95 @@ try:
 except (TypeError, ValueError):
     _ai_limit = 10
 _AI_SEMAPHORE = asyncio.Semaphore(max(1, _ai_limit))
+_gemini = gemini_service
 
 
 def _ai_degraded_mode_active() -> bool:
     return bool(settings.AI_FAIL_FAST_ON_UNAVAILABLE and not gemini_service.is_realtime_ai_available())
+
+
+async def _run_resume_parser_with_fallback(
+    *,
+    text: str,
+    auth_header: str | None = None,
+) -> dict:
+    try:
+        result = await harness_agent_client.run_agent(
+            "resume_parser",
+            {"doc_text": text},
+            auth_header,
+        )
+        parsed = result.get("parsed_resume") if isinstance(result, dict) else None
+        if isinstance(parsed, dict):
+            return parsed
+        raise HarnessAgentError("resume_parser", "invalid_result", str(result))
+    except HarnessAgentError as exc:
+        logger.warning("Harness fallback resume_parser: %s", exc)
+        return await _gemini.parse_resume(text)
+
+
+async def _run_embedding_with_fallback(
+    *,
+    text: str,
+    auth_header: str | None = None,
+) -> list:
+    try:
+        result = await harness_agent_client.run_agent(
+            "embedding",
+            {"text": text},
+            auth_header,
+        )
+        embedding = result.get("embedding") if isinstance(result, dict) else None
+        if isinstance(embedding, list):
+            return embedding
+        raise HarnessAgentError("embedding", "invalid_result", str(result))
+    except HarnessAgentError as exc:
+        logger.warning("Harness fallback embedding: %s", exc)
+        return await _gemini.get_embedding(text)
+
+
+async def _run_resume_scorer_with_fallback(
+    *,
+    parsed_resume: dict,
+    job_title: str,
+    exp_min: int,
+    exp_max: int,
+    must_have: list[str],
+    good_to_have: list[str],
+    description: str,
+    auth_header: str | None = None,
+) -> dict:
+    try:
+        result = await harness_agent_client.run_agent(
+            "resume_scorer",
+            {
+                "parsed_resume": parsed_resume,
+                "job_title": job_title,
+                "experience_min": exp_min,
+                "experience_max": exp_max,
+                "must_have_skills": must_have,
+                "good_to_have_skills": good_to_have,
+                "job_description": description,
+            },
+            auth_header,
+        )
+        score_result = result.get("score_result") if isinstance(result, dict) else None
+        if isinstance(score_result, dict):
+            return score_result
+        if isinstance(result, dict) and "resume_score" in result:
+            return result
+        raise HarnessAgentError("resume_scorer", "invalid_result", str(result))
+    except HarnessAgentError as exc:
+        logger.warning("Harness fallback resume_scorer: %s", exc)
+        return await _gemini.score_resume_against_jd(
+            parsed_resume=parsed_resume,
+            job_title=job_title,
+            exp_min=exp_min,
+            exp_max=exp_max,
+            must_have=must_have,
+            good_to_have=good_to_have,
+            description=description,
+        )
 
 
 def _harness_base_url() -> str:
@@ -856,9 +943,21 @@ async def _insert_application_atomic(
 #  Core resume processing 
 
 
-async def _compute_resume_data(file: UploadFile, job: JobDescription, user_email: str | None = None) -> dict:
+async def _compute_resume_data(
+    file: UploadFile,
+    job: JobDescription,
+    user_email: str | None = None,
+    auth_header: str | None = None,
+) -> dict:
     text, content = await file_service.extract_text(file)
-    return await _compute_resume_data_from_bytes(file.filename or "resume.pdf", content, text, job, user_email=user_email)
+    return await _compute_resume_data_from_bytes(
+        file.filename or "resume.pdf",
+        content,
+        text,
+        job,
+        user_email=user_email,
+        auth_header=auth_header,
+    )
 
 
 _background_tasks: set[asyncio.Task] = set()
@@ -870,6 +969,7 @@ async def _compute_resume_data_from_bytes(
     filename: str, content: bytes, text: str, job: JobDescription,
     cached_candidate: "Candidate | None" = None,
     user_email: str | None = None,
+    auth_header: str | None = None,
     pre_parsed_data: dict | None = None,
     manual_career_breaks: list | None = None,
     fast_mode: bool = False,
@@ -954,7 +1054,10 @@ async def _compute_resume_data_from_bytes(
             return _coerce_parsed_resume_payload(None, text, job)
         try:
             async with _AI_SEMAPHORE:
-                parsed_data = await gemini_service.parse_resume(text)
+                parsed_data = await _run_resume_parser_with_fallback(
+                    text=text,
+                    auth_header=auth_header,
+                )
             if isinstance(parsed_data, dict):
                 return _coerce_parsed_resume_payload(parsed_data, text, job)
             logger.warning(
@@ -973,7 +1076,10 @@ async def _compute_resume_data_from_bytes(
         if fast_mode:
             return []
         async with _AI_SEMAPHORE:
-            return await gemini_service.get_embedding(text[:12000])
+            return await _run_embedding_with_fallback(
+                text=text[:12000],
+                auth_header=auth_header,
+            )
 
     parsed, resume_embedding, resume_path = await asyncio.gather(
         _get_parsed(),
@@ -1056,7 +1162,7 @@ async def _compute_resume_data_from_bytes(
     if ai_scores is None and settings.AI_SCORING_ENABLED and not fast_mode:
         try:
             async with _AI_SEMAPHORE:
-                ai_scores = await gemini_service.score_resume_against_jd(
+                ai_scores = await _run_resume_scorer_with_fallback(
                     parsed_resume=parsed,
                     job_title=job.title,
                     exp_min=job.experience_min,
@@ -1064,6 +1170,7 @@ async def _compute_resume_data_from_bytes(
                     must_have=job.must_have_skills or [],
                     good_to_have=job.good_to_have_skills or [],
                     description=job.description or "",
+                    auth_header=auth_header,
                 )
             logger.info(
                 "[AI Score NEW] %s  skill=%s exp=%s proj=%s tier=%s",
@@ -1268,6 +1375,7 @@ async def _compute_resume_data_via_harness(
             job=job,
             cached_candidate=None,
             user_email=user_email,
+            auth_header=auth_header,
             pre_parsed_data=pre_parsed_data,
             fast_mode=True,
         )
@@ -1289,25 +1397,26 @@ async def _compute_resume_data_via_harness(
     }
 
     parsed = pre_parsed_data or _coerce_parsed_resume_payload(None, text, job)
-    harness_task = _build_harness_resume_scoring_task(
-        filename=filename,
-        text=text,
-        parsed_job=parsed_job,
-        parsed_resume=parsed,
-    )
-    harness_metadata = {
-        "tenant_id": tenant_id,
-        "job_id": str(job.id),
-        "filename": filename,
-        "job_title": parsed_job.get("title", ""),
-    }
-
-    score_result = await _post_harness_run_for_scoring(
-        task=harness_task,
-        tenant_id=tenant_id,
-        auth_header=auth_header,
-        metadata=harness_metadata,
-    )
+    try:
+        score_result = await harness_agent_client.run_agent(
+            "resume_scorer",
+            {
+                "filename": filename,
+                "parsed_resume": parsed,
+                "job": parsed_job,
+                "job_title": parsed_job.get("title") or "",
+                "experience_min": parsed_job.get("experience_min") or 0,
+                "experience_max": parsed_job.get("experience_max") or 5,
+                "must_have_skills": parsed_job.get("must_have_skills") or [],
+                "good_to_have_skills": parsed_job.get("good_to_have_skills") or [],
+                "job_description": parsed_job.get("description") or "",
+                "doc_text": text[:12000],
+            },
+            auth_header,
+        )
+    except HarnessAgentError as exc:
+        logger.warning("Harness run failed for %s; using native scorer fallback: %s", filename, exc)
+        score_result = None
     if score_result is None:
         logger.warning(
             "Harness run did not return score_result for %s; falling back to native scoring.",
@@ -1320,6 +1429,7 @@ async def _compute_resume_data_via_harness(
             job=job,
             cached_candidate=None,
             user_email=user_email,
+            auth_header=auth_header,
             pre_parsed_data=pre_parsed_data,
             fast_mode=fast_mode,
         )
@@ -1394,6 +1504,7 @@ async def _compute_resume_data_via_harness(
 async def _compute_pool_resume_data_from_bytes(
     filename: str, content: bytes, text: str,
     user_email: str | None = None,
+    auth_header: str | None = None,
     pre_parsed_data: dict | None = None,
 ) -> dict:
     """Pool upload  no job, no scoring. @observe creates a Langfuse trace for the parse step."""
@@ -1413,7 +1524,10 @@ async def _compute_pool_resume_data_from_bytes(
         if _ai_degraded_mode_active():
             return resume_fallback_parser.coerce_parsed_resume(None, text=text)
         try:
-            parsed = await gemini_service.parse_resume(text)
+            parsed = await _run_resume_parser_with_fallback(
+                text=text,
+                auth_header=auth_header,
+            )
             return resume_fallback_parser.coerce_parsed_resume(parsed, text=text)
         except Exception as parse_err:
             logger.warning(
@@ -1534,6 +1648,7 @@ async def upload_resume(
                 job,
                 cached_candidate=cached_row,
                 user_email=user.email,
+                auth_header=request.headers.get("authorization"),
                 fast_mode=degraded_mode,
             ),
             timeout=upload_slo_s,
@@ -1613,7 +1728,13 @@ async def upload_pool_single(
         )
 
     # Email-level dedup: parse first to get email, then check pool
-    data = await _compute_pool_resume_data_from_bytes(file.filename or "resume.pdf", content, text, user_email=user.email)
+    data = await _compute_pool_resume_data_from_bytes(
+        file.filename or "resume.pdf",
+        content,
+        text,
+        user_email=user.email,
+        auth_header=request.headers.get("authorization"),
+    )
 
     if data.get("email"):
         dup_emails = await _existing_pool_emails(db, [data["email"]])
@@ -1726,7 +1847,10 @@ async def upload_bulk_resumes(
             if bulk_fast_mode:
                 return _coerce_parsed_resume_payload(None, text, job)
             try:
-                parsed = await gemini_service.parse_resume(text)
+                parsed = await _run_resume_parser_with_fallback(
+                    text=text,
+                    auth_header=request.headers.get("authorization"),
+                )
                 return _coerce_parsed_resume_payload(parsed, text, job)
             except Exception as exc:
                 logger.warning(
@@ -1757,6 +1881,7 @@ async def upload_bulk_resumes(
                 job,
                 cached_candidate=_hash_to_cached.get(h),
                 user_email=user.email,
+                auth_header=request.headers.get("authorization"),
                 pre_parsed_data=pre_parsed,
                 fast_mode=bulk_fast_mode,
             )
@@ -2246,7 +2371,10 @@ async def upload_bulk_pool(
             if bulk_fast_mode:
                 return resume_fallback_parser.coerce_parsed_resume(None, text=text)
             try:
-                parsed = await gemini_service.parse_resume(text)
+                parsed = await _run_resume_parser_with_fallback(
+                    text=text,
+                    auth_header=request.headers.get("authorization"),
+                )
                 return resume_fallback_parser.coerce_parsed_resume(parsed, text=text)
             except Exception as exc:
                 logger.warning(
@@ -2258,7 +2386,12 @@ async def upload_bulk_pool(
     async def _pool_score(fname: str, content: bytes, text: str, pre_parsed: dict | None) -> dict:
         async with ai_sem:
             return await _compute_pool_resume_data_from_bytes(
-                fname, content, text, user_email=user.email, pre_parsed_data=pre_parsed or None
+                fname,
+                content,
+                text,
+                user_email=user.email,
+                auth_header=request.headers.get("authorization"),
+                pre_parsed_data=pre_parsed or None,
             )
 
     for _bi in range(0, len(_file_pairs), _READ_BATCH):
@@ -3032,7 +3165,10 @@ async def refresh_job_jd_similarity(
     # Fail fast when embeddings are unavailable, instead of returning a long
     # list of per-candidate failures.
     async with _AI_SEMAPHORE:
-        probe_embedding = await gemini_service.get_embedding("jd similarity refresh health check")
+        probe_embedding = await _run_embedding_with_fallback(
+            text="jd similarity refresh health check",
+            auth_header=request.headers.get("authorization"),
+        )
     if not probe_embedding:
         raise HTTPException(
             status_code=503,
@@ -3072,7 +3208,10 @@ async def refresh_job_jd_similarity(
                 continue
 
             async with _AI_SEMAPHORE:
-                resume_embedding = await gemini_service.get_embedding(resume_text[:12000])
+                resume_embedding = await _run_embedding_with_fallback(
+                    text=resume_text[:12000],
+                    auth_header=request.headers.get("authorization"),
+                )
             if not resume_embedding:
                 failed += 1
                 failed_candidates.append({

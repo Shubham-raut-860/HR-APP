@@ -151,7 +151,7 @@ class Settings(BaseSettings):
     HARNESS_MOUNT_ENABLED: bool = True
     HARNESS_ENVIRONMENT: str = "dev"
     HARNESS_JWT_SECRET_KEY: str = ""
-    HARNESS_ADAPTER_ENABLED: bool = False
+    HARNESS_ADAPTER_ENABLED: bool = True
     HARNESS_TRACE_RECORDER_ENABLED: bool = False
 
     # ─── Rate limiting ────────────────────────────────────────────────────────
