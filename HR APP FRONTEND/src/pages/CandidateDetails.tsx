@@ -14,10 +14,16 @@ import {
   GraduationCap, Briefcase, Code2, BarChart3,
   Calendar, Star, CheckCircle2, XCircle, AlertCircle,
   MapPin, Clock, ChevronDown, ChevronUp, Send, Sparkles,
-  CalendarOff, MessageSquarePlus,
+  CalendarOff, MessageSquarePlus, RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { getCandidate, downloadResume, draftCandidateEmail, sendCandidateEmail } from "@/services/candidates";
+import {
+  getCandidate,
+  downloadResume,
+  draftCandidateEmail,
+  sendCandidateEmail,
+  refreshJobJDSimilarity,
+} from "@/services/candidates";
 import { getJob } from "@/services/jobs";
 import { QuizResultModal } from "@/components/QuizResultModal";
 import {
@@ -57,6 +63,7 @@ export default function CandidateDetails() {
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [showAllSkills, setShowAllSkills] = useState(false);
+  const [refreshingSimilarity, setRefreshingSimilarity] = useState(false);
 
   // Contact email modal
   const [contactOpen, setContactOpen] = useState(false);
@@ -155,6 +162,34 @@ export default function CandidateDetails() {
     }
   };
 
+  const handleRefreshSimilarity = async () => {
+    const jobId = candidate?.job_id;
+    if (!jobId || !id) return;
+
+    setRefreshingSimilarity(true);
+    try {
+      const result = await refreshJobJDSimilarity(jobId, {
+        limit: 500,
+        includeArchived: false,
+      });
+      const updatedCount = Number(result?.updated ?? 0);
+      toast.success(
+        `JD similarity refresh done. Updated ${updatedCount} candidate${updatedCount === 1 ? "" : "s"}.`
+      );
+
+      const updatedCandidate = await getCandidate(id);
+      setCandidate(updatedCandidate);
+    } catch (err: any) {
+      const detail =
+        err?.response?.data?.detail ||
+        err?.message ||
+        "Failed to refresh JD similarity.";
+      toast.error(String(detail));
+    } finally {
+      setRefreshingSimilarity(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -231,6 +266,15 @@ export default function CandidateDetails() {
     const months = Number(b?.duration_months ?? b?.durationMonths ?? 0);
     return !b?.reason && Number.isFinite(months) && months >= 6;
   });
+  const hasLegacyMissingSimilarity =
+    !scoreBreakdown.ai_score_used &&
+    (candidate.vector_similarity == null || Number(candidate.vector_similarity) === 0) &&
+    !Object.prototype.hasOwnProperty.call(scoreBreakdown, "jd_hash");
+
+  const jdSimilarityUnavailable = Boolean(
+    !scoreBreakdown.ai_score_used &&
+    (scoreBreakdown.fast_mode === true || scoreBreakdown.degraded_mode === true || hasLegacyMissingSimilarity)
+  );
 
   return (
     <div className="max-w-6xl mx-auto space-y-0 pb-16">
@@ -352,7 +396,36 @@ export default function CandidateDetails() {
                 <ScoreBar label="Location"   value={candidate.location_match_pct} />
               )}
               {!(candidate.score_breakdown?.ai_score_used) && (
-                <ScoreBar label="JD Similarity" value={(candidate.vector_similarity ?? 0) * 100} />
+                jdSimilarityUnavailable ? (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">JD Similarity</span>
+                      <span className="font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+                        N/A
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      AI was in degraded mode during upload. Run JD similarity refresh to compute this value.
+                    </p>
+                    {candidate?.job_id && (
+                      <div className="pt-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={handleRefreshSimilarity}
+                          disabled={refreshingSimilarity}
+                          className="h-7 text-xs"
+                        >
+                          <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${refreshingSimilarity ? "animate-spin" : ""}`} />
+                          {refreshingSimilarity ? "Refreshing..." : "Refresh JD Similarity"}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <ScoreBar label="JD Similarity" value={(candidate.vector_similarity ?? 0) * 100} />
+                )
               )}
               {candidate.score_breakdown?.candidate_tier && (
                 <div className="flex items-center justify-between text-xs pt-1 border-t mt-1">

@@ -15,9 +15,9 @@ import asyncio
 import uuid
 import os
 import sys
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 # ─── Third-party ──────────────────────────────────────────────────────────────
 from fastapi import FastAPI, Request, status
@@ -35,9 +35,106 @@ from sqlalchemy import inspect as sa_inspect
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
 
+
+def _normalize_harness_env_raw(value: str | None) -> str:
+    env = (value or "").strip().lower()
+    if env in {"prod", "production"}:
+        return "prod"
+    if env in {"staging", "stage"}:
+        return "staging"
+    return "dev"
+
+
+def _normalize_azure_openai_base_url(endpoint: str | None) -> str:
+    """
+    Convert Azure endpoint to OpenAI-compatible v1 base URL expected by AsyncOpenAI.
+    Example:
+      https://my-resource.openai.azure.com -> https://my-resource.openai.azure.com/openai/v1/
+    """
+    raw = (endpoint or "").strip()
+    if not raw:
+        return ""
+    base = raw.rstrip("/")
+    if base.endswith("/openai/v1"):
+        return f"{base}/"
+    if base.endswith("/openai/v1/"):
+        return base
+    return f"{base}/openai/v1/"
+
+
+def _configure_harness_runtime_env_from_os() -> None:
+    """
+    Configure harness env before vendored harness imports/mounting.
+    This avoids stale vendor settings cache with wrong Redis values.
+    """
+    secret = (os.getenv("HARNESS_JWT_SECRET_KEY") or os.getenv("SECRET_KEY") or "").strip()
+    if secret:
+        os.environ["JWT_SECRET_KEY"] = secret
+
+    redis_url = (os.getenv("REDIS_URL") or "").strip()
+    if redis_url:
+        os.environ["REDIS_URL"] = redis_url
+        os.environ["redis_url"] = redis_url
+        try:
+            parsed = urlparse(redis_url)
+            if parsed.hostname:
+                os.environ["REDIS_HOST"] = parsed.hostname
+            if parsed.port:
+                os.environ["REDIS_PORT"] = str(parsed.port)
+        except Exception:
+            pass
+
+    if not os.getenv("ENVIRONMENT"):
+        raw_env = os.getenv("HARNESS_ENVIRONMENT") or os.getenv("APP_ENV") or "development"
+        os.environ["ENVIRONMENT"] = _normalize_harness_env_raw(raw_env)
+
+    # Azure OpenAI -> OpenAI-compatible env bridge for vendored HarnessAgent.
+    azure_key = (os.getenv("AZURE_OPENAI_API_KEY") or "").strip()
+    azure_endpoint = (os.getenv("AZURE_OPENAI_ENDPOINT") or "").strip()
+    azure_api_version = (os.getenv("AZURE_OPENAI_API_VERSION") or "").strip()
+    azure_deployment = (
+        os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+        or os.getenv("AZURE_CHAT_DEPLOYMENT")
+        or os.getenv("AZURE_MINI_DEPLOYMENT")
+        or ""
+    ).strip()
+    azure_base_url = _normalize_azure_openai_base_url(azure_endpoint)
+
+    if azure_key:
+        os.environ.setdefault("OPENAI_API_KEY", azure_key)
+    if azure_base_url:
+        os.environ.setdefault("OPENAI_BASE_URL", azure_base_url)
+        os.environ.setdefault("OPENAI_API_BASE", azure_base_url)
+    if azure_api_version:
+        os.environ.setdefault("OPENAI_API_VERSION", azure_api_version)
+    if azure_deployment:
+        os.environ.setdefault("OPENAI_API_DEPLOYMENT", azure_deployment)
+        os.environ.setdefault("OPENAI_MODELS", azure_deployment)
+        os.environ.setdefault("DEFAULT_MODEL", azure_deployment)
+    if azure_key and azure_base_url:
+        os.environ.setdefault("OPENAI_API_TYPE", "azure")
+
+    # Harness defaults workspace_base_path to "/workspaces", which resolves to
+    # "\\workspaces" on Windows and is not writable in local dev.
+    if not os.getenv("WORKSPACE_BASE_PATH"):
+        configured_workspace = (
+            os.getenv("HARNESS_WORKSPACE_BASE_PATH")
+            or os.getenv("APP_WORKSPACE_BASE_PATH")
+            or str((Path(__file__).resolve().parents[1] / "harness_workspaces").resolve())
+        )
+        os.environ["WORKSPACE_BASE_PATH"] = configured_workspace
+
+
+# Apply early so vendor harness reads canonical env values.
+_configure_harness_runtime_env_from_os()
+
 # ─── Local application ────────────────────────────────────────────────────────
 from app.config import settings
 from app.limiter import limiter
+from app.services.harness_auth_bridge import (
+    harness_get_current_tenant,
+    harness_get_current_user,
+)
 from app.routers import (
     auth, jd, resumes, quiz,
     analytics, admin, candidate_portal, notifications, agent,
@@ -49,6 +146,7 @@ from app.routers import evals as evals_router
 # ─── Logger ───────────────────────────────────────────────────────────────────
 logger = logging.getLogger(__name__)
 _HARNESS_AVAILABLE = True
+_HARNESS_SUBAPP: FastAPI | None = None
 
 
 def _env_flag_true(name: str, default: bool = False) -> bool:
@@ -60,6 +158,68 @@ def _env_flag_true(name: str, default: bool = False) -> bool:
 
 def _current_app_env() -> str:
     return (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or settings.APP_ENV or "development").strip().lower()
+
+
+def _normalize_harness_env(value: str | None) -> str:
+    env = (value or "").strip().lower()
+    if env in {"prod", "production"}:
+        return "prod"
+    if env in {"staging", "stage"}:
+        return "staging"
+    return "dev"
+
+
+def _configure_harness_runtime_env() -> None:
+    harness_secret = (settings.HARNESS_JWT_SECRET_KEY or settings.SECRET_KEY or "").strip()
+    if harness_secret:
+        os.environ["JWT_SECRET_KEY"] = harness_secret
+
+    if settings.REDIS_URL:
+        os.environ["REDIS_URL"] = settings.REDIS_URL
+        os.environ["redis_url"] = settings.REDIS_URL
+        try:
+            parsed = urlparse(settings.REDIS_URL)
+            if parsed.hostname:
+                os.environ["REDIS_HOST"] = parsed.hostname
+            if parsed.port:
+                os.environ["REDIS_PORT"] = str(parsed.port)
+        except Exception:
+            pass
+
+    if not os.getenv("ENVIRONMENT"):
+        os.environ["ENVIRONMENT"] = _normalize_harness_env(
+            settings.HARNESS_ENVIRONMENT or settings.APP_ENV
+        )
+
+    # Azure OpenAI -> OpenAI-compatible env bridge for vendored HarnessAgent.
+    azure_key = (settings.AZURE_OPENAI_API_KEY or "").strip()
+    azure_endpoint = (settings.AZURE_OPENAI_ENDPOINT or "").strip()
+    azure_api_version = (settings.AZURE_OPENAI_API_VERSION or "").strip()
+    azure_deployment = (
+        str(getattr(settings, "AZURE_OPENAI_DEPLOYMENT_NAME", "") or "").strip()
+        or str(getattr(settings, "AZURE_CHAT_DEPLOYMENT", "") or "").strip()
+        or str(getattr(settings, "AZURE_MINI_DEPLOYMENT", "") or "").strip()
+    )
+    azure_base_url = _normalize_azure_openai_base_url(azure_endpoint)
+
+    if azure_key:
+        os.environ.setdefault("OPENAI_API_KEY", azure_key)
+    if azure_base_url:
+        os.environ.setdefault("OPENAI_BASE_URL", azure_base_url)
+        os.environ.setdefault("OPENAI_API_BASE", azure_base_url)
+    if azure_api_version:
+        os.environ.setdefault("OPENAI_API_VERSION", azure_api_version)
+    if azure_deployment:
+        os.environ.setdefault("OPENAI_API_DEPLOYMENT", azure_deployment)
+        os.environ.setdefault("OPENAI_MODELS", azure_deployment)
+        os.environ.setdefault("DEFAULT_MODEL", azure_deployment)
+    if azure_key and azure_base_url:
+        os.environ.setdefault("OPENAI_API_TYPE", "azure")
+
+    if not os.getenv("WORKSPACE_BASE_PATH"):
+        os.environ["WORKSPACE_BASE_PATH"] = str(
+            (Path(__file__).resolve().parents[1] / "harness_workspaces").resolve()
+        )
 
 
 def _run_startup_migrations() -> None:
@@ -146,6 +306,10 @@ def _mount_original_harness_app(app: FastAPI) -> bool:
     """
     Mount the original HarnessAgent API from the vendored upstream source.
     """
+    if not settings.HARNESS_MOUNT_ENABLED:
+        logger.warning("HARNESS_MOUNT_ENABLED=false; /harness routes are disabled.")
+        return False
+
     project_root = Path(__file__).resolve().parents[1]
     harness_src = project_root / "vendor" / "HarnessAgent-main" / "src"
     if not harness_src.exists():
@@ -157,8 +321,17 @@ def _mount_original_harness_app(app: FastAPI) -> bool:
         sys.path.insert(0, src_str)
 
     try:
+        global _HARNESS_SUBAPP
+        _configure_harness_runtime_env()
+        from harness.api import deps as harness_deps
+        from harness.core.config import get_config as harness_get_config
         from harness.api.main import create_app as create_harness_app
-        app.mount("/harness", create_harness_app())
+        harness_get_config.cache_clear()
+        harness_app = create_harness_app()
+        _HARNESS_SUBAPP = harness_app
+        harness_app.dependency_overrides[harness_deps.get_current_tenant] = harness_get_current_tenant
+        harness_app.dependency_overrides[harness_deps.get_current_user] = harness_get_current_user
+        app.mount("/harness", harness_app)
         logger.info("Mounted original HarnessAgent API at /harness")
         return True
     except Exception:
@@ -191,59 +364,79 @@ def _mount_unavailable_harness_stub(app: FastAPI) -> None:
 
 # ─── Lifespan ─────────────────────────────────────────────────────────────────
 
+
+async def _start_harness_subapp_lifespan(exit_stack: AsyncExitStack) -> None:
+    """
+    Mounted sub-app lifespans are not always started automatically.
+    Explicitly enter harness lifespan so Redis/agent state is initialized.
+    """
+    harness_app = _HARNESS_SUBAPP
+    if harness_app is None:
+        return
+
+    if getattr(harness_app.state, "redis", None) is not None:
+        return
+
+    await exit_stack.enter_async_context(harness_app.router.lifespan_context(harness_app))
+    logger.info("Harness sub-app lifespan started by parent app lifecycle.")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # BUG #2 FIX (CRITICAL): Validate ENCRYPTION_KEY at startup, not at first
-    # file-upload time. Without this, dev/staging with missing ENCRYPTION_KEY
-    # starts fine but crashes with an unhandled RuntimeError on every upload.
-    if not settings.ENCRYPTION_KEY or len(settings.ENCRYPTION_KEY) < 32:
-        logger.error(
-            "⚠️  ENCRYPTION_KEY is missing or too short (< 32 chars). "
-            "File uploads and resume downloads WILL FAIL. "
-            "Set ENCRYPTION_KEY in your .env file."
-        )
-        if settings.APP_ENV == "production":
-            raise RuntimeError(
-                "ENCRYPTION_KEY must be at least 32 characters in production. "
-                "Set it in your .env file."
+    async with AsyncExitStack() as exit_stack:
+        # BUG #2 FIX (CRITICAL): Validate ENCRYPTION_KEY at startup, not at first
+        # file-upload time. Without this, dev/staging with missing ENCRYPTION_KEY
+        # starts fine but crashes with an unhandled RuntimeError on every upload.
+        if not settings.ENCRYPTION_KEY or len(settings.ENCRYPTION_KEY) < 32:
+            logger.error(
+                "⚠️  ENCRYPTION_KEY is missing or too short (< 32 chars). "
+                "File uploads and resume downloads WILL FAIL. "
+                "Set ENCRYPTION_KEY in your .env file."
+            )
+            if settings.APP_ENV == "production":
+                raise RuntimeError(
+                    "ENCRYPTION_KEY must be at least 32 characters in production. "
+                    "Set it in your .env file."
+                )
+
+        # Ensure mounted HarnessAgent lifespan runs so request.app.state.redis exists.
+        await _start_harness_subapp_lifespan(exit_stack)
+
+        # Always apply pending migrations on startup and enforce required schema.
+        await _run_startup_schema_guard()
+
+        # ── MLflow self-configures from env vars via mlflow_service.py ──────────────
+        # MLFLOW_TRACKING_URI and MLFLOW_EXPERIMENT_NAME are read at module import.
+        # mlflow_service._init_mlflow() runs automatically and logs the result.
+        # FIX: import in a thread to prevent blocking the event loop if the MLflow
+        # server is unreachable (socket timeout can be ~30s by default).
+        try:
+            # Wrap in wait_for to prevent hang if MLflow tracking is unreachable
+            _mlflow_available = await asyncio.wait_for(
+                asyncio.to_thread(
+                    lambda: __import__("app.services.mlflow_service", fromlist=["_init_mlflow"])._init_mlflow()
+                ),
+                timeout=5.0
+            )
+        except Exception as _e:
+            logger.debug("Failed to initialize MLflow service: %s", _e)
+            _mlflow_available = False
+        if not _mlflow_available:
+            logger.warning(
+                "⚠️  MLflow tracking server not reachable — set MLFLOW_TRACKING_URI in .env "
+                "or start: mlflow server --host 127.0.0.1 --port 5000"
             )
 
-    # Always apply pending migrations on startup and enforce required schema.
-    await _run_startup_schema_guard()
-
-    # ── MLflow self-configures from env vars via mlflow_service.py ──────────────
-    # MLFLOW_TRACKING_URI and MLFLOW_EXPERIMENT_NAME are read at module import.
-    # mlflow_service._init_mlflow() runs automatically and logs the result.
-    # FIX: import in a thread to prevent blocking the event loop if the MLflow
-    # server is unreachable (socket timeout can be ~30s by default).
-    try:
-        # Wrap in wait_for to prevent hang if MLflow tracking is unreachable
-        _mlflow_available = await asyncio.wait_for(
-            asyncio.to_thread(
-                lambda: __import__("app.services.mlflow_service", fromlist=["_init_mlflow"])._init_mlflow()
-            ),
-            timeout=5.0
-        )
-    except Exception as _e:
-        logger.debug("Failed to initialize MLflow service: %s", _e)
-        _mlflow_available = False
-    if not _mlflow_available:
-        logger.warning(
-            "⚠️  MLflow tracking server not reachable — set MLFLOW_TRACKING_URI in .env "
-            "or start: mlflow server --host 127.0.0.1 --port 5000"
-        )
-
-    try:
-        yield
-    finally:
-        if resumes._background_tasks:
-            await asyncio.gather(*list(resumes._background_tasks), return_exceptions=True)
         try:
-            from app.routers import flows_router as _flows_router
-            if getattr(_flows_router, "_flow_background_tasks", None):
-                await asyncio.gather(*list(_flows_router._flow_background_tasks), return_exceptions=True)
-        except Exception:
-            pass
+            yield
+        finally:
+            if resumes._background_tasks:
+                await asyncio.gather(*list(resumes._background_tasks), return_exceptions=True)
+            try:
+                from app.routers import flows_router as _flows_router
+                if getattr(_flows_router, "_flow_background_tasks", None):
+                    await asyncio.gather(*list(_flows_router._flow_background_tasks), return_exceptions=True)
+            except Exception:
+                pass
     # MLflow runs flush automatically when the context manager exits.
 
 
@@ -417,14 +610,38 @@ if settings.ENABLE_METAFLOW:
 
 # ─── Health Check ─────────────────────────────────────────────────────────────
 
+async def _check_backend_redis_health() -> dict:
+    if not settings.REDIS_URL:
+        return {"configured": False, "reachable": None}
+
+    try:
+        import redis.asyncio as aioredis  # type: ignore
+
+        client = aioredis.from_url(
+            settings.REDIS_URL,
+            encoding="utf-8",
+            decode_responses=True,
+            socket_connect_timeout=2,
+        )
+        try:
+            await client.ping()
+            return {"configured": True, "reachable": True}
+        finally:
+            await client.aclose()
+    except Exception:
+        return {"configured": True, "reachable": False}
+
+
 @app.get("/health", tags=["Health"])
 async def health_check():
+    redis_status = await _check_backend_redis_health()
     return {
         "status": "healthy",
         # VERSION FIX: reference app.version so this never drifts from the FastAPI
         # definition above — one source of truth for the version string.
         "version": app.version,
         "harness": "available" if _HARNESS_AVAILABLE else "unavailable",
+        "redis": redis_status,
         # SECURITY: environment name omitted — it's an internal infrastructure detail
         # that has no value to legitimate callers and leaks deployment layout to attackers.
     }
