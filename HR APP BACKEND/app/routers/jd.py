@@ -4,6 +4,8 @@ JD router – create, generate, list, get, update, delete
 from app.models import NotificationType
 from app.services.notification_service import push_to_all_candidates
 from app.services import gemini_service, cache_service, file_service
+from app.services import harness_agent_client
+from app.services.harness_agent_client import HarnessAgentError
 from app.services.auth_service import require_hr, log_action
 from app.config import settings
 from app.schemas import JDCreate, JDOut, JDGenerateRequest, MessageResponse
@@ -12,7 +14,7 @@ from app.database import get_db
 from typing import List
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 import os
 import hashlib
 import asyncio
@@ -29,6 +31,7 @@ JD_ALLOWED_EXTENSIONS = set(settings.allowed_extensions_list) | {
 
 @router.post("/from-document")
 async def generate_jd_from_document(
+    request: Request,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_hr),
@@ -76,7 +79,25 @@ async def generate_jd_from_document(
         )
 
     try:
-        ai_data = await gemini_service.parse_jd_from_document(text)
+        harness_result = await harness_agent_client.run_agent(
+            "jd_parser",
+            {"doc_text": text},
+            request.headers.get("authorization"),
+        )
+        ai_data = (
+            harness_result.get("parsed_job")
+            if isinstance(harness_result, dict)
+            else None
+        )
+        if not isinstance(ai_data, dict):
+            raise HarnessAgentError("jd_parser", "invalid_result", str(harness_result))
+    except HarnessAgentError as exc:
+        logger.warning("Harness fallback jd_parser: %s", exc)
+        try:
+            ai_data = await gemini_service.parse_jd_from_document(text)
+        except Exception as e:
+            logger.exception("JD extraction from document failed for file=%s", file.filename)
+            raise HTTPException(status_code=500, detail="An internal error occurred.") from e
     except Exception as e:
         logger.exception("JD extraction from document failed for file=%s", file.filename)
         raise HTTPException(status_code=500, detail="An internal error occurred.") from e
@@ -104,6 +125,7 @@ async def generate_jd_from_document(
 
 @router.post("/bulk-from-documents", status_code=201)
 async def bulk_create_jds_from_documents(
+    request: Request,
     files: List[UploadFile] = File(...),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_hr),
@@ -126,7 +148,23 @@ async def bulk_create_jds_from_documents(
             text = await file_service.extract_text_from_bytes(fname, content)
             if not text.strip():
                 raise ValueError("Could not extract any text from the document")
-            return await gemini_service.parse_jd_from_document(text), text
+            try:
+                harness_result = await harness_agent_client.run_agent(
+                    "jd_parser",
+                    {"doc_text": text},
+                    request.headers.get("authorization"),
+                )
+                parsed_job = (
+                    harness_result.get("parsed_job")
+                    if isinstance(harness_result, dict)
+                    else None
+                )
+                if not isinstance(parsed_job, dict):
+                    raise HarnessAgentError("jd_parser", "invalid_result", str(harness_result))
+                return parsed_job, text
+            except HarnessAgentError as exc:
+                logger.warning("Harness fallback jd_parser: %s", exc)
+                return await gemini_service.parse_jd_from_document(text), text
 
     for f in files:
         ext = os.path.splitext(f.filename or "")[1].lower()

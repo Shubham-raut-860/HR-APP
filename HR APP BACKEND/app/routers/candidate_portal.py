@@ -32,6 +32,8 @@ FIX LOG (this session):
 """
 from app.config import settings
 from app.services import gemini_service, file_service, scoring_service, encryption_service, resume_fallback_parser
+from app.services import harness_agent_client
+from app.services.harness_agent_client import HarnessAgentError
 from app.services.notification_service import push_to_candidate_by_email
 from app.services.auth_service import require_candidate, require_hr, log_action
 from app.schemas import (
@@ -69,6 +71,298 @@ router = APIRouter(prefix="/candidate", tags=["Candidate Portal"])
 
 
 # ─── Private helper ───────────────────────────────────────────────────────────
+
+def _auth_header(request: Request | None) -> str | None:
+    if request is None:
+        return None
+    return request.headers.get("authorization")
+
+
+async def _run_quiz_generation(
+    *,
+    request: Request | None,
+    jd_text: str,
+    skills: list[str],
+    easy: int,
+    medium: int,
+    hard: int,
+) -> list[dict]:
+    try:
+        harness_result = await harness_agent_client.run_agent(
+            "quiz_generator",
+            {
+                "jd_text": jd_text,
+                "skills": skills,
+                "easy": easy,
+                "medium": medium,
+                "hard": hard,
+            },
+            _auth_header(request),
+        )
+        questions = harness_result.get("questions") if isinstance(harness_result, dict) else None
+        if isinstance(questions, list):
+            return questions
+        raise HarnessAgentError("quiz_generator", "invalid_result", str(harness_result))
+    except HarnessAgentError as exc:
+        logger.warning("Harness fallback quiz_generator: %s", exc)
+        return await gemini_service.generate_quiz_questions(
+            jd_text=jd_text,
+            skills=skills,
+            easy=easy,
+            medium=medium,
+            hard=hard,
+        )
+
+
+async def _run_parse_resume(
+    *,
+    request: Request | None,
+    resume_text: str,
+) -> dict:
+    try:
+        harness_result = await harness_agent_client.run_agent(
+            "resume_parser",
+            {"doc_text": resume_text},
+            _auth_header(request),
+        )
+        parsed = harness_result.get("parsed_resume") if isinstance(harness_result, dict) else None
+        if isinstance(parsed, dict):
+            return parsed
+        raise HarnessAgentError("resume_parser", "invalid_result", str(harness_result))
+    except HarnessAgentError as exc:
+        logger.warning("Harness fallback resume_parser: %s", exc)
+        return await gemini_service.parse_resume(resume_text)
+
+
+async def _run_get_embedding(
+    *,
+    request: Request | None,
+    text: str,
+) -> list:
+    try:
+        harness_result = await harness_agent_client.run_agent(
+            "embedding",
+            {"text": text},
+            _auth_header(request),
+        )
+        embedding = harness_result.get("embedding") if isinstance(harness_result, dict) else None
+        if isinstance(embedding, list):
+            return embedding
+        raise HarnessAgentError("embedding", "invalid_result", str(harness_result))
+    except HarnessAgentError as exc:
+        logger.warning("Harness fallback embedding: %s", exc)
+        return await gemini_service.get_embedding(text)
+
+
+async def _run_resume_scorer(
+    *,
+    request: Request | None,
+    parsed_resume: dict,
+    job_title: str,
+    exp_min: int,
+    exp_max: int,
+    must_have: list[str],
+    good_to_have: list[str],
+    description: str,
+) -> dict:
+    try:
+        harness_result = await harness_agent_client.run_agent(
+            "resume_scorer",
+            {
+                "parsed_resume": parsed_resume,
+                "job_title": job_title,
+                "experience_min": exp_min,
+                "experience_max": exp_max,
+                "must_have_skills": must_have,
+                "good_to_have_skills": good_to_have,
+                "job_description": description,
+            },
+            _auth_header(request),
+        )
+        score = harness_result.get("score_result") if isinstance(harness_result, dict) else None
+        if isinstance(score, dict):
+            return score
+        if isinstance(harness_result, dict) and "resume_score" in harness_result:
+            return harness_result
+        raise HarnessAgentError("resume_scorer", "invalid_result", str(harness_result))
+    except HarnessAgentError as exc:
+        logger.warning("Harness fallback resume_scorer: %s", exc)
+        return await gemini_service.score_resume_against_jd(
+            parsed_resume=parsed_resume,
+            job_title=job_title,
+            exp_min=exp_min,
+            exp_max=exp_max,
+            must_have=must_have,
+            good_to_have=good_to_have,
+            description=description,
+        )
+
+
+async def _run_enhance_resume(
+    *,
+    request: Request | None,
+    resume_text: str,
+    job_title: str,
+    must_have: list[str],
+    good_to_have: list[str],
+    job_description: str,
+    current_score: float,
+    missing_skills: list[str],
+) -> dict:
+    try:
+        harness_result = await harness_agent_client.run_agent(
+            "resume_enhancer",
+            {
+                "resume_text": resume_text,
+                "job_title": job_title,
+                "must_have_skills": must_have,
+                "good_to_have_skills": good_to_have,
+                "job_description": job_description,
+                "current_score": current_score,
+                "missing_skills": missing_skills,
+            },
+            _auth_header(request),
+        )
+        result = harness_result.get("result") if isinstance(harness_result, dict) else None
+        if isinstance(result, dict):
+            return result
+        if isinstance(harness_result, dict):
+            return harness_result
+        raise HarnessAgentError("resume_enhancer", "invalid_result", str(harness_result))
+    except HarnessAgentError as exc:
+        logger.warning("Harness fallback resume_enhancer: %s", exc)
+        return await gemini_service.enhance_resume(
+            resume_text=resume_text,
+            job_title=job_title,
+            must_have=must_have,
+            good_to_have=good_to_have,
+            job_description=job_description,
+            current_score=current_score,
+            missing_skills=missing_skills,
+        )
+
+
+async def _run_build_resume(
+    *,
+    request: Request | None,
+    candidate_data: dict,
+    target_role: str,
+) -> dict:
+    try:
+        harness_result = await harness_agent_client.run_agent(
+            "resume_builder",
+            {
+                "candidate_data": candidate_data,
+                "target_role": target_role,
+            },
+            _auth_header(request),
+        )
+        result = harness_result.get("result") if isinstance(harness_result, dict) else None
+        if isinstance(result, dict):
+            return result
+        if isinstance(harness_result, dict):
+            return harness_result
+        raise HarnessAgentError("resume_builder", "invalid_result", str(harness_result))
+    except HarnessAgentError as exc:
+        logger.warning("Harness fallback resume_builder: %s", exc)
+        return await gemini_service.build_resume_from_form(
+            candidate_data=candidate_data,
+            target_role=target_role,
+        )
+
+
+async def _run_cover_letter(
+    *,
+    request: Request | None,
+    candidate_name: str,
+    exp_years: float,
+    skills: list,
+    work_history: list,
+    education: list,
+    company_name: str,
+    job_title: str,
+    must_have: list[str],
+    job_description: str,
+) -> dict:
+    try:
+        harness_result = await harness_agent_client.run_agent(
+            "cover_letter",
+            {
+                "candidate_name": candidate_name,
+                "exp_years": exp_years,
+                "skills": skills,
+                "work_history": work_history,
+                "education": education,
+                "company_name": company_name,
+                "job_title": job_title,
+                "must_have_skills": must_have,
+                "job_description": job_description,
+            },
+            _auth_header(request),
+        )
+        result = harness_result.get("result") if isinstance(harness_result, dict) else None
+        if isinstance(result, dict):
+            return result
+        if isinstance(harness_result, dict):
+            return harness_result
+        raise HarnessAgentError("cover_letter", "invalid_result", str(harness_result))
+    except HarnessAgentError as exc:
+        logger.warning("Harness fallback cover_letter: %s", exc)
+        return await gemini_service.generate_cover_letter(
+            candidate_name=candidate_name,
+            exp_years=exp_years,
+            skills=skills,
+            work_history=work_history,
+            education=education,
+            company_name=company_name,
+            job_title=job_title,
+            must_have=must_have,
+            job_description=job_description,
+        )
+
+
+async def _run_career_analysis(
+    *,
+    request: Request | None,
+    candidate_name: str,
+    exp_years: float,
+    skills: list,
+    work_history: list,
+    education: list,
+    career_breaks: list,
+    target_role: str,
+) -> dict:
+    try:
+        harness_result = await harness_agent_client.run_agent(
+            "career_analyst",
+            {
+                "candidate_name": candidate_name,
+                "experience_years": exp_years,
+                "skills": skills,
+                "work_history": work_history,
+                "education": education,
+                "career_breaks": career_breaks,
+                "target_role": target_role,
+            },
+            _auth_header(request),
+        )
+        result = harness_result.get("career_analysis") if isinstance(harness_result, dict) else None
+        if isinstance(result, dict):
+            return result
+        if isinstance(harness_result, dict):
+            return harness_result
+        raise HarnessAgentError("career_analyst", "invalid_result", str(harness_result))
+    except HarnessAgentError as exc:
+        logger.warning("Harness fallback career_analyst: %s", exc)
+        return await gemini_service.analyze_career_path(
+            candidate_name=candidate_name,
+            exp_years=exp_years,
+            skills=skills,
+            work_history=work_history,
+            education=education,
+            career_breaks=career_breaks,
+            target_role=target_role,
+        )
 
 def _company_info(hr_user) -> dict:
     _DEFAULT_BIO = (
@@ -281,6 +575,7 @@ async def apply_to_job(
         file.filename or "resume.pdf", content, text, jd,
         cached_candidate=None,
         user_email=user.email,
+        auth_header=request.headers.get("authorization"),
         manual_career_breaks=manual_cbs,
     )
 
@@ -630,7 +925,8 @@ async def generate_mock_test(
         skills = ["General Software Engineering"]
 
     try:
-        questions_data = await gemini_service.generate_quiz_questions(
+        questions_data = await _run_quiz_generation(
+            request=request,
             jd_text=jd_text,
             skills=skills[:8],
             easy=4, medium=4, hard=2,
@@ -692,6 +988,7 @@ async def evaluate_resume_precheck(
         data = await _compute_resume_data_from_bytes(
             file.filename or "resume", content, text, jd,
             cached_candidate=None,
+            auth_header=request.headers.get("authorization"),
         )
     except Exception as exc:
         logger.error("[evaluate-resume] AI scoring failed: %s", exc)
@@ -723,6 +1020,7 @@ async def list_stored_resumes(
 
 @router.post("/my-resumes", response_model=StoredResumeOut, status_code=201)
 async def upload_stored_resume(
+    request: Request,
     file: UploadFile = File(...),
     label: str = "My Resume",
     set_as_default: bool = False,
@@ -780,8 +1078,8 @@ async def upload_stored_resume(
     if text.strip():
         try:
             parsed, embedding = await asyncio.gather(
-                gemini_service.parse_resume(text),
-                gemini_service.get_embedding(text[:6000]),
+                _run_parse_resume(request=request, resume_text=text),
+                _run_get_embedding(request=request, text=text[:6000]),
                 return_exceptions=True,
             )
             if isinstance(parsed, Exception):
@@ -960,6 +1258,7 @@ async def download_stored_resume(
 
 @router.post("/apply-with-vault/{job_id}", response_model=CandidateOut, status_code=201)
 async def apply_with_vault_resume(
+    request: Request,
     job_id: str,
     resume_id: str,
     db: AsyncSession = Depends(get_db),
@@ -1046,8 +1345,8 @@ async def apply_with_vault_resume(
         parsed: dict = {}
         resume_embedding: list = []
         parsed_res, embedding_res = await asyncio.gather(
-            gemini_service.parse_resume(text),
-            gemini_service.get_embedding(text[:6000]),
+            _run_parse_resume(request=request, resume_text=text),
+            _run_get_embedding(request=request, text=text[:6000]),
             return_exceptions=True,
         )
         if isinstance(parsed_res, Exception):
@@ -1125,7 +1424,8 @@ async def apply_with_vault_resume(
 
     ai_scores: dict | None = None
     try:
-        ai_scores = await gemini_service.score_resume_against_jd(
+        ai_scores = await _run_resume_scorer(
+            request=request,
             parsed_resume={
                 "name": stored.parsed_name if has_cache else None,
                 "email": stored.parsed_email if has_cache else None,
@@ -1134,8 +1434,11 @@ async def apply_with_vault_resume(
                 "normalized_skills": normalized_skills, "skill_years": skill_yrs,
                 "work_experience": work_experience, "projects": projects, "education": education,
             },
-            job_title=jd.title, exp_min=jd.experience_min, exp_max=jd.experience_max,
-            must_have=jd.must_have_skills or [], good_to_have=jd.good_to_have_skills or [],
+            job_title=jd.title,
+            exp_min=jd.experience_min,
+            exp_max=jd.experience_max,
+            must_have=jd.must_have_skills or [],
+            good_to_have=jd.good_to_have_skills or [],
             description=jd.description or "",
         )
     except Exception as ai_err:
@@ -1283,6 +1586,7 @@ async def apply_with_vault_resume(
 
 @router.get("/resume-fit/{job_id}")
 async def get_resume_fit_score(
+    request: Request,
     job_id: str,
     resume_id: str,
     db: AsyncSession = Depends(get_db),
@@ -1351,8 +1655,8 @@ async def get_resume_fit_score(
         text, _ = await file_service.extract_text(_fake)
         _ensure_resume_text_quality(text, context="resume-fit preview re-parse")
         parsed, resume_embedding = await asyncio.gather(
-            gemini_service.parse_resume(text),
-            gemini_service.get_embedding(text[:6000]),
+            _run_parse_resume(request=request, resume_text=text),
+            _run_get_embedding(request=request, text=text[:6000]),
             return_exceptions=True,
         )
         if isinstance(parsed, Exception):
@@ -1470,6 +1774,7 @@ class EnhanceResumeRequest(BaseModel):
 
 @router.post("/resume/enhance")
 async def enhance_resume(
+    request: Request,
     body: EnhanceResumeRequest,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_candidate),
@@ -1540,7 +1845,7 @@ async def enhance_resume(
     else:
         resume_text = body.resume_text
         try:
-            parsed = await gemini_service.parse_resume(resume_text)
+            parsed = await _run_parse_resume(request=request, resume_text=resume_text)
             parsed = resume_fallback_parser.coerce_parsed_resume(
                 parsed if isinstance(parsed, dict) else None,
                 text=resume_text,
@@ -1560,7 +1865,8 @@ async def enhance_resume(
     ]
 
     try:
-        enhancement = await gemini_service.enhance_resume(
+        enhancement = await _run_enhance_resume(
+            request=request,
             resume_text=resume_text,
             job_title=jd.title,
             must_have=jd.must_have_skills or [],
@@ -1600,6 +1906,7 @@ class BuildResumeRequest(BaseModel):
 
 @router.post("/resume/build")
 async def build_resume(
+    request: Request,
     body: BuildResumeRequest,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_candidate),
@@ -1629,7 +1936,8 @@ async def build_resume(
 
     try:
         # BUG-5 FIX: target_role comes from body.target_role — never mutated
-        built_resume = await gemini_service.build_resume_from_form(
+        built_resume = await _run_build_resume(
+            request=request,
             candidate_data=candidate_data,
             target_role=body.target_role,
         )
@@ -1649,6 +1957,7 @@ async def build_resume(
 
 @router.post("/cover-letter/{job_id}")
 async def generate_cover_letter(
+    request: Request,
     job_id: str,
     resume_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
@@ -1693,7 +2002,8 @@ async def generate_cover_letter(
         education = latest.education or []
 
     try:
-        cover_letter = await gemini_service.generate_cover_letter(
+        cover_letter = await _run_cover_letter(
+            request=request,
             candidate_name=candidate_name, exp_years=exp_years,
             skills=skills, work_history=work_history, education=education,
             company_name=company_name, job_title=jd.title,
@@ -1711,6 +2021,7 @@ async def generate_cover_letter(
 
 @router.get("/career-analysis")
 async def get_career_analysis(
+    request: Request,
     target_role: Optional[str] = Query(default=None),
     resume_id: Optional[str] = Query(default=None),
     db: AsyncSession = Depends(get_db),
@@ -1749,7 +2060,8 @@ async def get_career_analysis(
             status_code=400, detail="Insufficient profile data. Please upload a detailed resume first.")
 
     try:
-        analysis = await gemini_service.analyze_career_path(
+        analysis = await _run_career_analysis(
+            request=request,
             candidate_name=candidate_name, exp_years=exp_years,
             skills=skills, work_history=work_history, education=education,
             career_breaks=career_breaks, target_role=target_role or "",
@@ -1819,6 +2131,7 @@ async def generate_resume_pdf(
 
 @router.post("/resume/parse-for-builder")
 async def parse_resume_for_builder(
+    request: Request,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_candidate),
@@ -1854,7 +2167,7 @@ async def parse_resume_for_builder(
         )
 
     try:
-        parsed = await gemini_service.parse_resume(text)
+        parsed = await _run_parse_resume(request=request, resume_text=text)
         parsed = resume_fallback_parser.coerce_parsed_resume(
             parsed if isinstance(parsed, dict) else None,
             text=text,
