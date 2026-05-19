@@ -94,13 +94,23 @@ SERVICE_AGENT_MAP: dict[str, dict[str, object]] = {
         "class": "NotificationAgent",
     },
     # ── Harness ────────────────────────────────────────────────────────────────
-    "harness_agent": {
-        "services": ["all agents above"],
-        "functions": ["run", "run_agent", "run_pipeline", "run_parallel", "health_all"],
-        "owns": "Master orchestrator — routes tasks, manages pipelines, retries, health probes.",
-        "class": "HarnessAgent",
+    "career_analyst_agent": {
+        "services": ["gemini_service"],
+        "functions": ["analyze_career_path"],
+        "owns": "Career trajectory analysis and target-role roadmap generation.",
+        "class": "CareerAnalystAgent",
     },
-    # ── Legacy entries (retained for backward compat) ─────────────────────────
+    "multi_agent_runtime": {
+        "services": ["all agents above"],
+        "functions": [
+            "run_agent", "run_resume_pipeline", "parse_resume", "parse_jd", "embed_text",
+            "score_resume", "generate_quiz", "evaluate_code", "enhance_resume", "build_resume",
+            "generate_cover_letter", "analyze_career_path", "health_all"
+        ],
+        "owns": "Master HR orchestrator that composes specialized agents into production task pipelines.",
+        "class": "HRMultiAgentRuntime",
+    },
+    # Legacy entries (retained for backward compat)
     "llm_extraction_agent": {
         "services": ["gemini_service"],
         "functions": ["parse_resume", "parse_jd_from_document", "generate_jd", "get_embedding", "normalize_skills"],
@@ -132,3 +142,4 @@ SERVICE_AGENT_MAP: dict[str, dict[str, object]] = {
         "class": None,
     },
 }
+

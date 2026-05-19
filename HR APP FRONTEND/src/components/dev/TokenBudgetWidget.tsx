@@ -26,6 +26,8 @@ function fmtUsd(value: number): string {
 }
 
 export function TokenBudgetWidget() {
+  if (import.meta.env.VITE_DEV_TOKEN_MONITOR_ENABLED !== 'true') return null;
+
   const [summary, setSummary] = useState<TokenSummary | null>(null);
   const [hotspots, setHotspots] = useState<TokenHotspot[]>([]);
   const [budgets, setBudgets] = useState<TokenBudgets | null>(null);

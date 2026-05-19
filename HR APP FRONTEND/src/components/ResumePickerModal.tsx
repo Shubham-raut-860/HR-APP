@@ -95,8 +95,8 @@ export default function ResumePickerModal({
   setSelected(prev => (prev && storedResumes.some(r => r.id === prev)) ? prev : initialSelected);
     if (easyApply && def) {
       setLoading(false);
-      setTimeout(() => handleApply(def.id), 50);
-      return;
+      const tid = setTimeout(() => handleApply(def.id), 50);
+      return () => clearTimeout(tid);
     }
     storedResumes.forEach(r => fetchFitScore(r.id));
   }, [open, storedResumes, easyApply]);

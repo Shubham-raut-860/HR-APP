@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import Depends, Request
 
 from app.models import User
-from app.services.auth_service import require_hr
+from app.services.auth_service import get_current_user
 
 
 def _role_to_str(role: object) -> str:
@@ -13,15 +13,15 @@ def _role_to_str(role: object) -> str:
 
 async def harness_get_current_tenant(
     request: Request,
-    user: User = Depends(require_hr),
+    user: User = Depends(get_current_user),
 ) -> str:
-    # One-tenant-per-HR-user mapping for mounted /harness routes.
+    # One-tenant-per-authenticated-user mapping for mounted /harness routes.
     return str(user.id)
 
 
 async def harness_get_current_user(
     request: Request,
-    user: User = Depends(require_hr),
+    user: User = Depends(get_current_user),
 ) -> dict:
     user_id = str(user.id)
     return {

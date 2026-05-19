@@ -1,11 +1,12 @@
 """
 Analytics router – dashboard metrics, ranking, skill gap
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
+from sqlalchemy.orm import load_only
 from typing import List
 import io
 import asyncio
@@ -16,6 +17,7 @@ from app.schemas import AnalyticsSummary, SkillGapItem, CandidateRankRow, Messag
 from app.services.auth_service import require_hr, log_action
 from app.services import export_service
 from app.services import scoring_service
+from app.limiter import limiter
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 logger = logging.getLogger(__name__)
@@ -80,6 +82,9 @@ async def _compute_summary(job_id: str, db: AsyncSession) -> AnalyticsSummary:
             func.avg(case(
                 (Candidate.resume_score > 0, Candidate.resume_score), else_=None
             )).label("avg_resume"),
+            func.avg(case(
+                (Candidate.quiz_score.isnot(None), Candidate.quiz_score), else_=None
+            )).label("avg_quiz_raw"),
             func.avg(Candidate.quiz_pct).label("avg_quiz_pct"),
             func.avg(Candidate.final_score).label("avg_final"),
             func.sum(case((Candidate.passed == True,  1), else_=0)).label("pass_count"),
@@ -111,7 +116,7 @@ async def _compute_summary(job_id: str, db: AsyncSession) -> AnalyticsSummary:
         quiz_taken_count=int(agg.quiz_taken or 0),
         ranked_count=int(agg.ranked or 0),
         avg_resume_score=round(float(agg.avg_resume), 2) if agg.avg_resume is not None else 0,
-        avg_quiz_score=round(float(agg.avg_quiz_pct), 2) if agg.avg_quiz_pct is not None else None,
+        avg_quiz_score=round(float(agg.avg_quiz_raw), 2) if agg.avg_quiz_raw is not None else None,
         avg_quiz_pct=round(float(agg.avg_quiz_pct), 2) if agg.avg_quiz_pct is not None else None,
         avg_final_score=round(float(agg.avg_final), 2) if agg.avg_final is not None else None,
         pass_count=int(agg.pass_count or 0),
@@ -160,7 +165,23 @@ async def get_rankings(
         await db.commit()
 
     res = await db.execute(
-        select(Candidate).where(
+        select(Candidate).options(
+            load_only(
+                Candidate.id,
+                Candidate.name,
+                Candidate.email,
+                Candidate.tag,
+                Candidate.resume_score,
+                Candidate.quiz_score,
+                Candidate.quiz_max,
+                Candidate.quiz_pct,
+                Candidate.final_score,
+                Candidate.rank,
+                Candidate.passed,
+                Candidate.job_id,
+                Candidate.is_archived,
+            )
+        ).where(
             Candidate.job_id == job_id,
             Candidate.is_archived == False
         )
@@ -244,7 +265,24 @@ async def export_excel(
     title = jd.title
 
     c_res = await db.execute(
-        select(Candidate).where(
+        select(Candidate).options(
+            load_only(
+                Candidate.rank,
+                Candidate.name,
+                Candidate.email,
+                Candidate.tag,
+                Candidate.normalized_skills,
+                Candidate.experience_years,
+                Candidate.skill_match_pct,
+                Candidate.experience_match_pct,
+                Candidate.resume_score,
+                Candidate.quiz_score,
+                Candidate.final_score,
+                Candidate.passed,
+                Candidate.job_id,
+                Candidate.is_archived,
+            )
+        ).where(
             Candidate.job_id == job_id,
             Candidate.is_archived == False,
         ).order_by(Candidate.rank.asc().nullslast())
@@ -289,7 +327,20 @@ async def export_pdf(
     summary = await _compute_summary(job_id, db)
 
     c_res = await db.execute(
-        select(Candidate).where(
+        select(Candidate).options(
+            load_only(
+                Candidate.rank,
+                Candidate.name,
+                Candidate.email,
+                Candidate.tag,
+                Candidate.resume_score,
+                Candidate.quiz_score,
+                Candidate.final_score,
+                Candidate.passed,
+                Candidate.job_id,
+                Candidate.is_archived,
+            )
+        ).where(
             Candidate.job_id == job_id,
             Candidate.is_archived == False,
         ).order_by(Candidate.rank.asc().nullslast())
@@ -322,7 +373,9 @@ async def export_pdf(
 
 
 @router.post("/rank/{job_id}", response_model=MessageResponse)
+@limiter.limit("5/minute")
 async def calculate_rankings(
+    request: Request,
     job_id: str,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_hr),

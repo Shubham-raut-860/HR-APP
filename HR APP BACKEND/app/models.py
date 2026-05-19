@@ -16,21 +16,48 @@ CHANGES:
 """
 import uuid
 import hashlib
+import logging as _log
 from datetime import datetime, timezone
 from typing import Optional
 import sqlalchemy as sa
 from sqlalchemy import (
     String, Text, Integer, Float, Boolean, DateTime,
-    ForeignKey, JSON, Enum as SAEnum, Index, UniqueConstraint
+    ForeignKey, JSON, Enum as SAEnum, Index, CheckConstraint
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.ext.mutable import MutableList, MutableDict
+from app.config import settings
+from app.constants.versions import PARSER_VERSION
 from app.database import Base
 import enum
+
+
+def _is_postgres_url(database_url: str) -> bool:
+    url = (database_url or "").strip().lower()
+    return url.startswith("postgresql") or url.startswith("postgres://")
+
+
 try:
     from pgvector.sqlalchemy import Vector
 except Exception:  # pragma: no cover - optional dependency in local sqlite dev
     Vector = None
+
+_pgvector_available = Vector is not None
+if not _pgvector_available:
+    _db_url = ""
+    try:
+        from app.config import settings as _s
+        _db_url = str(_s.DATABASE_URL or "")
+    except Exception:
+        pass
+    if _is_postgres_url(_db_url) or "postgresql" in _db_url.lower() or "postgres" in _db_url.lower():
+        raise RuntimeError(
+            "pgvector Python package is required for PostgreSQL deployments. "
+            "Run: pip install pgvector"
+        )
+    _log.getLogger(__name__).warning(
+        "pgvector not available; embedding columns will use JSON (SQLite/dev mode only)."
+    )
 
 
 def gen_uuid() -> str:
@@ -41,7 +68,7 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-EMBEDDING_DIM = 1536
+EMBEDDING_DIM = settings.EMBEDDING_DIM
 if Vector is not None:
     EMBEDDING_SA_TYPE = JSON().with_variant(Vector(EMBEDDING_DIM), "postgresql")
 else:
@@ -110,7 +137,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[UserRole] = mapped_column(SAEnum(UserRole), default=UserRole.hr)
+    role: Mapped[UserRole] = mapped_column(SAEnum(UserRole), default=UserRole.candidate)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -134,6 +161,12 @@ class User(Base):
     )
     revoked_tokens: Mapped[list["RevokedToken"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
+    )
+    used_reset_tokens: Mapped[list["UsedResetToken"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    bulk_upload_jobs: Mapped[list["BulkUploadJob"]] = relationship(
+        back_populates="creator", cascade="all, delete-orphan"
     )
 
 # ─── Notification ─────────────────────────────────────────────────────────────
@@ -186,7 +219,7 @@ class JobDescription(Base):
     file_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_by: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="SET NULL"))
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
@@ -214,16 +247,36 @@ class Candidate(Base):
     #   CREATE UNIQUE INDEX ix_candidate_email_job
     #       ON candidates (email, job_id) WHERE job_id IS NOT NULL;
     __table_args__ = (
-        UniqueConstraint(
+        # Candidate self-apply uniqueness should apply only when both identifiers
+        # are present; pool and recruiter-managed rows intentionally keep one side null.
+        Index(
+            "uq_application_user_job",
             "user_id",
             "job_id",
-            name="uq_application_user_job",
+            unique=True,
+            postgresql_where=sa.text("user_id IS NOT NULL AND job_id IS NOT NULL"),
+            sqlite_where=sa.text("user_id IS NOT NULL AND job_id IS NOT NULL"),
         ),
         Index(
             "ix_candidate_email_job",
-            "email", "job_id",
+            "email",
+            "job_id",
             unique=True,
             postgresql_where=sa.text("job_id IS NOT NULL"),
+            sqlite_where=sa.text("job_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_pool_candidate_email_user",
+            sa.text("lower(email)"),
+            "user_id",
+            unique=True,
+            postgresql_where=sa.text("job_id IS NULL AND email IS NOT NULL AND user_id IS NOT NULL"),
+            sqlite_where=sa.text("job_id IS NULL AND email IS NOT NULL AND user_id IS NOT NULL"),
+        ),
+        # Prevent fully orphaned rows that bypass both ownership dimensions.
+        CheckConstraint(
+            "job_id IS NOT NULL OR user_id IS NOT NULL",
+            name="ck_candidates_job_or_user_present",
         ),
     )
 
@@ -267,7 +320,7 @@ class Candidate(Base):
     # Migration: add_is_archived_migration.py
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
-    # PostgreSQL uses pgvector vector(1536); non-PostgreSQL dialects use JSON
+    # PostgreSQL uses pgvector vector(settings.EMBEDDING_DIM); non-PostgreSQL uses JSON
     # fallback to keep local sqlite/dev and tests operational.
     embedding: Mapped[Optional[list]] = mapped_column(EMBEDDING_SA_TYPE, nullable=True)
     skill_match_pct: Mapped[float] = mapped_column(Float, default=0.0)
@@ -353,7 +406,7 @@ class Question(Base):
 class QuizAttempt(Base):
     __tablename__ = "quiz_attempts"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
-    quiz_id: Mapped[str] = mapped_column(String(36), ForeignKey("quizzes.id"), nullable=False)
+    quiz_id: Mapped[str] = mapped_column(String(36), ForeignKey("quizzes.id"), nullable=False, index=True)
     # BUG-O FIX: added index — quiz submission loads attempt with candidate join
     candidate_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("candidates.id"), nullable=False, index=True)
@@ -373,6 +426,10 @@ class QuizAttempt(Base):
     difficulty_breakdown: Mapped[dict] = mapped_column(MutableDict.as_mutable(JSON), default=dict)
     tab_switches: Mapped[int] = mapped_column(Integer, default=0)
     question_order: Mapped[list] = mapped_column(MutableList.as_mutable(JSON), default=list)
+    question_snapshot: Mapped[Optional[list]] = mapped_column(
+        MutableList.as_mutable(JSON), nullable=True
+    )
+    code_eval_count: Mapped[int] = mapped_column(Integer, default=0)
     # BUG 7 FIX: quiz access tokens now expire after a configurable period
     token_expires_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True)
@@ -386,13 +443,14 @@ class QuizAttempt(Base):
         return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
     # Backward-compatible write-only alias for older call-sites that still pass
-    # access_token=... when constructing QuizAttempt.
+    # access_token=... when constructing QuizAttempt. Raw tokens are never stored,
+    # so reading access_token from a DB-loaded row intentionally returns None.
     @property
     def access_token(self) -> Optional[str]:
         raw = getattr(self, "_raw_access_token", None)
         if raw is not None:
             return raw
-        return self.token_hash
+        return None
 
     @access_token.setter
     def access_token(self, raw_token: str) -> None:
@@ -438,9 +496,34 @@ class StoredResume(Base):
         MutableList.as_mutable(JSON), nullable=True)
     embedding: Mapped[Optional[list]] = mapped_column(EMBEDDING_SA_TYPE, nullable=True)
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    parse_version: Mapped[int] = mapped_column(Integer, default=1)  # bump to force re-parse
+    parse_version: Mapped[int] = mapped_column(Integer, default=PARSER_VERSION)
 
     user: Mapped["User"] = relationship(back_populates="stored_resumes")
+
+
+class BulkUploadJob(Base):
+    __tablename__ = "bulk_upload_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True, default="queued")
+    created_by: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    job_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("job_descriptions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    processed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_committed_batch: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error_summary: Mapped[Optional[dict]] = mapped_column(MutableDict.as_mutable(JSON), nullable=True)
+    details: Mapped[Optional[dict]] = mapped_column(MutableDict.as_mutable(JSON), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, index=True
+    )
+
+    creator: Mapped[Optional["User"]] = relationship(back_populates="bulk_upload_jobs")
 
 
 class AuditLog(Base):
@@ -485,3 +568,16 @@ class RevokedToken(Base):
     revoked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
 
     user: Mapped[Optional["User"]] = relationship(back_populates="revoked_tokens")
+
+
+class UsedResetToken(Base):
+    __tablename__ = "used_reset_tokens"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    jti: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+    user: Mapped["User"] = relationship(back_populates="used_reset_tokens")

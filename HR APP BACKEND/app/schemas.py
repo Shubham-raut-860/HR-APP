@@ -1,5 +1,5 @@
 """
-Pydantic v2 schemas – request bodies & response shapes
+Pydantic v2 schemas â€“ request bodies & response shapes
 
 FIX LOG:
   SCHEMA-1  CandidatePortalOut.quiz_max_score was `float` (non-optional) but
@@ -10,47 +10,45 @@ FIX LOG:
             even though the Candidate model has the column. HR could never see
             candidate location in any list/detail view.
 
-  SCHEMA-3  PoolMatchOut was missing `location: Optional[str]` — pool match
+  SCHEMA-3  PoolMatchOut was missing `location: Optional[str]` â€” pool match
             results showed no location for candidates in the pool.
 """
 from __future__ import annotations
 import re
 from datetime import datetime
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator, computed_field
+from typing import Optional, List, Dict, Any, Literal
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator, computed_field
 from app.models import UserRole, CandidateTag, QuizStatus, Difficulty
 from app.constants.scoring import (
+    candidate_tier_from_years,
     DEFAULT_SHORTLIST_THRESHOLD,
     JD_DEFAULT_PASS_THRESHOLD,
+    MAX_QUIZ_QUESTIONS,
     SHORTLIST_WEIGHT_SUM_TOLERANCE_MAX,
     SHORTLIST_WEIGHT_SUM_TOLERANCE_MIN,
     STRONG_SHORTLIST_THRESHOLD,
-    TIER_FRESHER_MAX_YEARS,
-    TIER_MID_MAX_YEARS,
 )
+from app.utils.password_policy import validate_password
 
 
-# ─── Shared helpers ───────────────────────────────────────────────────────────
+# â”€â”€â”€ Shared helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
-def validate_password_strength(password: str) -> str:
-    """Shared password-strength check.
+_EMAIL_LIKE_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-    Rules (must match auth.py reset_password / change_password handlers):
-      - min 8 characters  (enforced by Field(min_length=8) on schema fields)
-      - max 128 characters (enforced by Field(max_length=128) on schema fields)
-      - at least one uppercase letter
-      - at least one special (non-alphanumeric) character
 
-    Returns the password unchanged on success; raises ValueError on failure.
-    auth.py handlers duplicate these checks inline (HTTPException) — if you
-    change the rules here, update auth.py too.
-    """
-    if not re.search(r'[A-Z]', password):
-        raise ValueError("Password must contain at least one uppercase letter")
-    if not re.search(r'[^a-zA-Z0-9]', password):
-        raise ValueError("Password must contain at least one special character")
-    return password
+def normalize_optional_email(value: Any) -> Optional[str]:
+    """Best-effort outbound email normalizer for legacy dirty DB rows."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if not _EMAIL_LIKE_PATTERN.fullmatch(cleaned):
+        return None
+    return cleaned
 
 
 def normalize_candidate_tag(value: Any) -> Any:
@@ -58,45 +56,42 @@ def normalize_candidate_tag(value: Any) -> Any:
         return value
     lowered = value.strip().lower()
     mapping = {
-        "strong": "Strong",
-        "medium": "Medium",
-        "reject": "Reject",
+        "strong": CandidateTag.strong,
+        "medium": CandidateTag.medium,
+        "reject": CandidateTag.reject,
     }
     return mapping.get(lowered, value)
 
 
-# ─── Shared ───────────────────────────────────────────────────────────────────
+# â”€â”€â”€ Shared â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class MessageResponse(BaseModel):
     message: str
     detail: Optional[str] = None
 
 
-# ─── Auth ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€ Auth â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=72)
     full_name: str
-    # Only 'hr' and 'candidate' allowed — 'admin' must be assigned by an admin
-    # via the admin router after user creation.
-    role: str = "hr"
+    # Public self-registration supports candidate and recruiter (hr).
+    # Admin provisioning still remains disallowed here.
+    role: Literal["candidate", "hr"] = "candidate"
 
-    # BUG #4 FIX (CRITICAL): Enforce same password strength rules as
-    # reset_password and change_password. Without this, a user registering
-    # with "mypassword" (valid at registration) would be permanently blocked
-    # from changing their password because the stricter check rejects it.
+    # Canonical password policy shared with reset/change handlers via
+    # app.utils.password_policy.validate_password().
     @field_validator("password")
     @classmethod
-    def password_strength(cls, v: str) -> str:
-        return validate_password_strength(v)
+    def validate_password_field(cls, v: str) -> str:
+        return validate_password(v)
 
     @field_validator("role")
     @classmethod
     def restrict_role(cls, v: str) -> str:
-        allowed = {"hr", "candidate"}
-        if v not in allowed:
-            raise ValueError(f"Role must be one of {allowed}")
+        if v not in {"candidate", "hr"}:
+            raise ValueError("Role must be candidate or hr")
         return v
 
 
@@ -124,9 +119,12 @@ class LoginRequest(BaseModel):
     password: str
 
 
-# ─── Job Description ──────────────────────────────────────────────────────────
+# â”€â”€â”€ Job Description â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class JDCreate(BaseModel):
+    # extra="ignore" â€” frontend sends extra fields like `company`, `company_bio`,
+    # `company_blog` for display purposes. Silently drop them instead of 422.
+    model_config = ConfigDict(extra="ignore")
     title: str
     role: str
     location: Optional[str] = None
@@ -231,7 +229,7 @@ class JDOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ─── Resume / Candidate ───────────────────────────────────────────────────────
+# â”€â”€â”€ Resume / Candidate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class EducationItem(BaseModel):
     degree: Optional[str] = None
@@ -246,28 +244,21 @@ class ProjectItem(BaseModel):
     skills: List[str] = []
 
 
-# ─── Shared tier computation mixin ────────────────────────────────────────────
+# â”€â”€â”€ Shared tier computation mixin â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _CandidateTierMixin(BaseModel):
     """Shared model_validator for computing candidate_tier from score_breakdown
     or experience_years. Used by both CandidateOut and CandidateListOut."""
     candidate_tier: Optional[str] = None
-    score_breakdown: Optional[Dict] = None
     experience_years: float = 0.0
 
     @model_validator(mode="after")
     def _pull_candidate_tier(self) -> "_CandidateTierMixin":
-        if self.candidate_tier is None and isinstance(self.score_breakdown, dict):
-            self.candidate_tier = self.score_breakdown.get("candidate_tier")
+        score_breakdown = getattr(self, "score_breakdown", None)
+        if self.candidate_tier is None and isinstance(score_breakdown, dict):
+            self.candidate_tier = score_breakdown.get("candidate_tier")
         if self.candidate_tier is None:
-            yrs = self.experience_years or 0.0
-            # BUG 4 FIX: match scoring_service.detect_candidate_tier() thresholds exactly
-            # TODO [DRIFT]: These thresholds are duplicated from
-            # scoring_service.py:detect_candidate_tier(). Extract both to a shared
-            # constants module (e.g. app/constants.py) to prevent future drift.
-            self.candidate_tier = (
-                "fresher" if yrs < TIER_FRESHER_MAX_YEARS else "mid" if yrs < TIER_MID_MAX_YEARS else "senior"
-            )
+            self.candidate_tier = candidate_tier_from_years(self.experience_years or 0.0)
         return self
 
 
@@ -276,7 +267,8 @@ class CandidateOut(_CandidateTierMixin):
     job_id: Optional[str]
     user_id: Optional[str] = None
     name: Optional[str]
-    email: Optional[EmailStr]
+    # Email is normalized on read; legacy rows may contain nullable values.
+    email: Optional[str] = None
     phone: Optional[str]
     # SCHEMA-2 FIX: location was stored on the model but missing from this schema
     location: Optional[str] = None
@@ -312,6 +304,11 @@ class CandidateOut(_CandidateTierMixin):
     def normalize_tag_field(cls, value: Any) -> Any:
         return normalize_candidate_tag(value)
 
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email_field(cls, value: Any) -> Optional[str]:
+        return normalize_optional_email(value)
+
 
 class CandidateListOut(_CandidateTierMixin):
     """
@@ -323,7 +320,8 @@ class CandidateListOut(_CandidateTierMixin):
     job_id: Optional[str]
     user_id: Optional[str] = None
     name: Optional[str]
-    email: Optional[EmailStr]
+    # Email is normalized on read; legacy rows may contain nullable values.
+    email: Optional[str] = None
     phone: Optional[str]
     # SCHEMA-2 FIX: location was stored on the model but missing from this schema
     location: Optional[str] = None
@@ -358,13 +356,58 @@ class CandidateListOut(_CandidateTierMixin):
     def normalize_tag_field(cls, value: Any) -> Any:
         return normalize_candidate_tag(value)
 
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email_field(cls, value: Any) -> Optional[str]:
+        return normalize_optional_email(value)
+
+
+class CandidatePipelineListOut(_CandidateTierMixin):
+    """
+    Lightweight pipeline list schema for GET /resumes/ used by recruiter list/kanban
+    views. Excludes heavy JSON blobs (skills/education/projects/score_breakdown).
+    """
+    id: str
+    job_id: Optional[str]
+    user_id: Optional[str] = None
+    name: Optional[str]
+    email: Optional[str] = None
+    phone: Optional[str]
+    location: Optional[str] = None
+    normalized_skills: List[str]
+    experience_years: float
+    skill_match_pct: float
+    experience_match_pct: float
+    candidate_tier: Optional[str] = None
+    resume_score: float
+    tag: Optional[CandidateTag]
+    quiz_score: Optional[float]
+    quiz_max: Optional[float] = None
+    quiz_pct: Optional[float] = None
+    final_score: Optional[float]
+    rank: Optional[int]
+    created_at: datetime
+    is_archived: bool = False
+    model_config = {"from_attributes": True}
+
+    @field_validator("tag", mode="before")
+    @classmethod
+    def normalize_tag_field(cls, value: Any) -> Any:
+        return normalize_candidate_tag(value)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email_field(cls, value: Any) -> Optional[str]:
+        return normalize_optional_email(value)
+
 
 class PoolMatchOut(BaseModel):
     """A pool candidate with scores computed on-the-fly against a specific JD.
-    Scores are NOT yet persisted — they are written to DB only on import."""
+    Scores are NOT yet persisted â€” they are written to DB only on import."""
     id: str
     name: Optional[str]
-    email: Optional[EmailStr]
+    # Email is normalized on read; legacy rows may contain nullable values.
+    email: Optional[str] = None
     phone: Optional[str] = None
     # SCHEMA-3 FIX: location was missing from pool match results
     location: Optional[str] = None
@@ -377,9 +420,14 @@ class PoolMatchOut(BaseModel):
     computed_tag: Optional[str]
     model_config = {"from_attributes": True}
 
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email_field(cls, value: Any) -> Optional[str]:
+        return normalize_optional_email(value)
+
 
 class ShortlistConfig(BaseModel):
-    """Custom shortlisting weights — forwarded to compute_resume_score()."""
+    """Custom shortlisting weights â€” forwarded to compute_resume_score()."""
     job_id: str
     strong_threshold: float = Field(default=STRONG_SHORTLIST_THRESHOLD, ge=0, le=100)
     medium_threshold: float = Field(default=DEFAULT_SHORTLIST_THRESHOLD, ge=0, le=100)
@@ -401,8 +449,8 @@ class ShortlistConfig(BaseModel):
     def normalize_weights(self) -> "ShortlistConfig":
         """Ensure scoring weights sum to 1.0.
 
-        If the total is within 5% of 1.0 (0.95–1.05), weights are auto-
-        normalized. Outside that range the input is rejected — the caller
+        If the total is within 5% of 1.0 (0.95â€“1.05), weights are auto-
+        normalized. Outside that range the input is rejected â€” the caller
         likely made a mistake (e.g. passed percentages instead of fractions).
         """
         weight_fields = [
@@ -424,7 +472,7 @@ class ShortlistConfig(BaseModel):
         return self
 
 
-# ─── Candidate Portal (self-service) ─────────────────────────────────────────
+# â”€â”€â”€ Candidate Portal (self-service) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class SkillFeedbackItem(BaseModel):
     """Per-skill gap feedback returned to a candidate."""
@@ -448,7 +496,7 @@ class CandidatePortalOut(BaseModel):
     education_match_pct: float
     tag: Optional[str]
     quiz_score: Optional[float]
-    # SCHEMA-1 FIX: was `float` (non-optional) — get_my_feedback() now correctly
+    # SCHEMA-1 FIX: was `float` (non-optional) â€” get_my_feedback() now correctly
     # returns None when no quiz has been assigned to the candidate yet.
     # Changing to Optional prevents a Pydantic ValidationError on None.
     quiz_max_score: Optional[float] = None
@@ -480,7 +528,7 @@ class PublicJDOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ─── Quiz ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€ Quiz â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class QuizGenerateRequest(BaseModel):
     duration_minutes: Optional[int] = None
@@ -526,15 +574,44 @@ class QuizStartResponse(BaseModel):
 
 class SubmitAnswersRequest(BaseModel):
     attempt_id: str
-    answers: Dict[str, int]
+    answers: Dict[str, Any] = Field(..., max_length=MAX_QUIZ_QUESTIONS)
     tab_switches: int = Field(default=0, ge=0, le=10000)
 
-    @field_validator("answers")
+    @field_validator("answers", mode="before")
     @classmethod
-    def answers_not_empty(cls, v: Dict[str, int]) -> Dict[str, int]:
+    def answers_not_empty(cls, v: Any) -> Dict[str, Any]:
+        if not isinstance(v, dict):
+            raise ValueError("answers must be an object mapping question IDs to answers")
         if not v:
             raise ValueError("At least one answer must be submitted")
-        return v
+        if len(v) > MAX_QUIZ_QUESTIONS:
+            raise ValueError(
+                f"answers cannot contain more than {MAX_QUIZ_QUESTIONS} items"
+            )
+        normalized: Dict[str, Any] = {}
+        for key, value in v.items():
+            if not isinstance(key, str):
+                raise ValueError("All answer keys must be non-empty strings")
+            key_clean = key.strip()
+            if not key_clean:
+                raise ValueError("All answer keys must be non-empty strings")
+            if not isinstance(value, (str, int, list)):
+                raise ValueError("Answer values must be str, int, or list")
+            normalized[key_clean] = value
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_answers_payload(self) -> "SubmitAnswersRequest":
+        if len(self.answers) > MAX_QUIZ_QUESTIONS:
+            raise ValueError(
+                f"answers cannot contain more than {MAX_QUIZ_QUESTIONS} items"
+            )
+        for key, value in self.answers.items():
+            if not isinstance(key, str) or not key.strip():
+                raise ValueError("All answer keys must be non-empty strings")
+            if not isinstance(value, (str, int, list)):
+                raise ValueError("Answer values must be str, int, or list")
+        return self
 
 
 class QuizResultOut(BaseModel):
@@ -549,7 +626,7 @@ class QuizResultOut(BaseModel):
     passed: Optional[bool] = None
 
 
-# ─── Candidate Token (for quiz link) ─────────────────────────────────────────
+# â”€â”€â”€ Candidate Token (for quiz link) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class QuizAnswerItemOut(BaseModel):
     question_id: str
@@ -595,7 +672,7 @@ class SendQuizLinkRequest(BaseModel):
     quiz_id: str
 
 
-# ─── Analytics ────────────────────────────────────────────────────────────────
+# â”€â”€â”€ Analytics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class AnalyticsSummary(BaseModel):
     total_applicants: int
@@ -635,7 +712,7 @@ class CandidateRankRow(BaseModel):
     passed: Optional[bool]
 
 
-# ─── Audit ────────────────────────────────────────────────────────────────────
+# â”€â”€â”€ Audit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class AuditLogOut(BaseModel):
     id: str
@@ -649,7 +726,7 @@ class AuditLogOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ─── Stored Resume Vault ─────────────────────────────────────────────────────
+# â”€â”€â”€ Stored Resume Vault â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class StoredResumeOut(BaseModel):
     id: str
@@ -677,7 +754,7 @@ class StoredResumeLabelUpdate(BaseModel):
     is_default: Optional[bool] = None
 
 
-# ─── User Update ─────────────────────────────────────────────────────────────
+# â”€â”€â”€ User Update â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -694,7 +771,7 @@ class UserUpdate(BaseModel):
         return v
 
 
-# ─── Career Tools ─────────────────────────────────────────────────────────────
+# â”€â”€â”€ Career Tools â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ResumeEnhancementRequest(BaseModel):
     resume_text: str
@@ -752,3 +829,4 @@ class CoverLetterRequest(BaseModel):
 class CoverLetterResponse(BaseModel):
     cover_letter_body: str
     subject_line: str
+

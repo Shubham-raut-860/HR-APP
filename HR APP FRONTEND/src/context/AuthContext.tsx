@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // the app in a "stale authenticated" state where the UI shows logged-in
       // but every API call would 401. Clear auth state on failure.
       console.error('Failed to refresh user — clearing auth state', error);
-      apiLogout();
+      await apiLogout();
       setUser(null);
     }
   };
@@ -97,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // where isAuthenticated is still true but the token is gone — any API call
     // during that frame would 401.
     setUser(null);
-    apiLogout();
+    void apiLogout();
   };
 
   return (

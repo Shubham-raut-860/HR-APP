@@ -94,8 +94,8 @@ describe("Analytics and Dashboard contracts", () => {
     );
 
     await waitFor(() => expect(mockGetSummary).toHaveBeenCalled());
-    expect(screen.getByText("Quiz Taken:7")).toBeTruthy();
-    expect(screen.getByText("Final Ranked:5")).toBeTruthy();
+    expect(await screen.findByText("Quiz Taken:7")).toBeTruthy();
+    expect(await screen.findByText("Final Ranked:5")).toBeTruthy();
   });
 
   it("renders explicit degraded state when pipeline stats API fails", async () => {

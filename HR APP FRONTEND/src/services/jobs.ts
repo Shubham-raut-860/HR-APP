@@ -22,7 +22,9 @@ export const createJob = async (data: any) => {
 };
 
 export const generateJob = async (data: any) => {
-  const response = await api.post('/jd/generate', data);
+  const response = await api.post('/jd/generate', data, {
+    timeout: 45_000,
+  });
   return response.data;
 };
 

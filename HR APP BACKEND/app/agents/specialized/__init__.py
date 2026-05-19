@@ -15,6 +15,7 @@ from app.agents.specialized.resume_enhancer_agent import ResumeEnhancerAgent
 from app.agents.specialized.resume_builder_agent import ResumeBuilderAgent
 from app.agents.specialized.cover_letter_agent import CoverLetterAgent
 from app.agents.specialized.notification_agent import NotificationAgent
+from app.agents.specialized.career_analyst_agent import CareerAnalystAgent
 
 __all__ = [
     "FileExtractionAgent",
@@ -31,4 +32,5 @@ __all__ = [
     "ResumeBuilderAgent",
     "CoverLetterAgent",
     "NotificationAgent",
+    "CareerAnalystAgent",
 ]

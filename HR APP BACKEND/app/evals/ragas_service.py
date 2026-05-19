@@ -81,7 +81,7 @@ def _build_ragas_llm():
         )
         return llm, embeddings
     except ImportError as exc:
-        logger.warning("langchain-openai not installed — RAGAS will be unavailable. (%s)", exc)
+        logger.warning("langchain-openai not installed - RAGAS will be unavailable. (%s)", exc)
         return None, None
 
 
@@ -108,9 +108,9 @@ class RagasService:
             import langchain_openai  # noqa: F401
             self._available = bool(settings.AZURE_OPENAI_API_KEY)
             if self._available:
-                logger.info("✅ RAGAS service initialised (Azure OpenAI backend).")
+                logger.info("RAGAS service initialised (Azure OpenAI backend).")
             else:
-                logger.warning("⚠️  RAGAS available but AZURE_OPENAI_API_KEY not set.")
+                logger.warning("RAGAS available but AZURE_OPENAI_API_KEY not set.")
         except ImportError as exc:
             logger.warning(
                 "⚠️  RAGAS not installed — run `pip install ragas langchain-openai`. (%s)", exc)

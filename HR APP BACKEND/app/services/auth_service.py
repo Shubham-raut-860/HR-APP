@@ -7,20 +7,46 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from jose import JWTError, jwt
-import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from app.config import settings
 from app.database import get_db
 from app.models import User, UserRole, AuditLog, RefreshToken, RevokedToken
+from app.utils.password_policy import MAX_BYTES
 
 
 bearer_scheme = HTTPBearer()
+_BCRYPT_MODULE = None
+
+
+def _bcrypt():
+    global _BCRYPT_MODULE
+    if _BCRYPT_MODULE is None:
+        import bcrypt as _bcrypt_module
+        _BCRYPT_MODULE = _bcrypt_module
+    return _BCRYPT_MODULE
+
+
+_BCRYPT_ROUNDS = int(getattr(settings, "BCRYPT_ROUNDS", 12))
+# Keep a static bcrypt hash to avoid expensive gensalt/hash work at import-time.
+# This hash is non-secret and only used for constant-time credential checks when
+# a user does not exist.
+_DUMMY_HASH = "$2b$12$kq22MyZhK2sAwTa67D48ce9zxYLCKp1sOT128RN1h.YBIorYuwpgC"
+DUMMY_PASSWORD_HASH = _DUMMY_HASH
+
+
+def _assert_bcrypt_safe(password: str) -> None:
+    if len(password.encode("utf-8")) > MAX_BYTES:
+        raise ValueError(
+            f"Password exceeds bcrypt maximum input length ({MAX_BYTES} bytes)"
+        )
 
 
 def hash_password(password: str) -> str:
+    _assert_bcrypt_safe(password)
+    bcrypt = _bcrypt()
     # Rounds are configurable via settings.BCRYPT_ROUNDS (default 12).
     # Increase as hardware improves — each +1 doubles hashing time.
     # FOLLOW-UP: add BCRYPT_ROUNDS: int = 12 to app/config.py Settings class.
@@ -30,6 +56,8 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
+    _assert_bcrypt_safe(plain)
+    bcrypt = _bcrypt()
     return bcrypt.checkpw(plain.encode('utf-8'), hashed.encode('utf-8'))
 
 
@@ -69,31 +97,36 @@ async def issue_refresh_token(db: AsyncSession, user_id: str) -> str:
 async def rotate_refresh_token(db: AsyncSession, raw_refresh_token: str) -> tuple[str, str]:
     token_hash = _hash_refresh_token(raw_refresh_token)
     now = datetime.now(timezone.utc)
-    row = (await db.execute(
-        select(RefreshToken).where(RefreshToken.token_hash == token_hash)
-    )).scalar_one_or_none()
-    if not row:
-        raise HTTPException(status_code=401, detail="Invalid refresh token")
-    if row.revoked_at is not None:
-        raise HTTPException(status_code=401, detail="Refresh token already revoked")
-    expires_utc = row.expires_at if row.expires_at.tzinfo is not None else row.expires_at.replace(tzinfo=timezone.utc)
-    if expires_utc <= now:
-        raise HTTPException(status_code=401, detail="Refresh token expired")
-
     new_raw = secrets.token_urlsafe(48)
     new_hash = _hash_refresh_token(new_raw)
-    row.revoked_at = now
-    row.replaced_by_token_hash = new_hash
+    revoked_result = await db.execute(
+        update(RefreshToken)
+        .where(
+            RefreshToken.token_hash == token_hash,
+            RefreshToken.revoked_at.is_(None),
+            RefreshToken.expires_at > now,
+        )
+        .values(
+            revoked_at=now,
+            replaced_by_token_hash=new_hash,
+        )
+        .returning(RefreshToken.user_id)
+    )
+    revoked_row = revoked_result.first()
+    if not revoked_row:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    user_id = str(revoked_row[0])
     db.add(
         RefreshToken(
-            user_id=row.user_id,
+            user_id=user_id,
             token_hash=new_hash,
             expires_at=now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
             created_at=now,
         )
     )
     await db.flush()
-    return row.user_id, new_raw
+    return user_id, new_raw
 
 
 async def revoke_refresh_token(db: AsyncSession, raw_refresh_token: str) -> None:
@@ -145,17 +178,19 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db),
 ) -> User:
     payload = decode_token(credentials.credentials)
-    if payload.get("type") not in (None, "access"):
+    token_type = payload.get("type")
+    if token_type != "access":
         raise HTTPException(status_code=401, detail="Invalid token type")
     user_id: str | None = payload.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token payload")
 
     jti = payload.get("jti")
-    if jti:
-        revoked = (await db.execute(select(RevokedToken).where(RevokedToken.jti == jti))).scalar_one_or_none()
-        if revoked:
-            raise HTTPException(status_code=401, detail="Token has been revoked")
+    if not isinstance(jti, str) or not jti.strip():
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+    revoked = (await db.execute(select(RevokedToken).where(RevokedToken.jti == jti))).scalar_one_or_none()
+    if revoked:
+        raise HTTPException(status_code=401, detail="Token has been revoked")
 
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()

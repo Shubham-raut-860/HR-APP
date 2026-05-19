@@ -8,32 +8,73 @@ import logging
 import string
 from datetime import datetime, timezone, timedelta
 import os
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request, Header, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request, Header, Query, BackgroundTasks
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 # FIX Finding 21: Add rate limit to prevent code-eval abuse
 from app.limiter import limiter
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.orm import selectinload
 from typing import List, Optional, Any, Literal
 import random
-from app.database import get_db
+from importlib import import_module
+from app.database import get_db, AsyncSessionLocal
 from app.models import User, Quiz, Question, QuizAttempt, Candidate, JobDescription, QuizStatus, CandidateTag, NotificationType, UserRole
-from app.services.notification_service import push_notification, push_to_candidate_by_email
+from app.services.notification_service import (
+    push_notification,
+    push_to_candidate_by_email,
+    push_to_candidates_by_emails,
+)
 from app.schemas import (
     QuizGenerateRequest, QuizOut, QuizStartResponse, QuestionOut,
     QuestionWithAnswer, SubmitAnswersRequest, QuizResultOut, SendQuizLinkRequest,
     QuizAnswerItemOut, CandidateAnswerSheetOut, QuizMasterAnswerSheetOut
 )
-from app.services.auth_service import get_current_user, require_hr, require_candidate, log_action
-from app.services import gemini_service, scoring_service, file_service
-from app.services import harness_agent_client
-from app.services.harness_agent_client import HarnessAgentError
+from app.services.auth_service import require_hr, require_candidate, log_action
 from app.config import settings
+from app.utils.quiz_validation import (
+    QuestionValidationError,
+    deduplicate_questions,
+    difficulty_counts,
+    rebalance_difficulty_distribution,
+    validate_question,
+)
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/quiz", tags=["Quiz"])
 logger = logging.getLogger(__name__)
+class _LazyModule:
+    def __init__(self, module_path: str):
+        self._module_path = module_path
+        self._module = None
+
+    def _load(self):
+        if self._module is None:
+            self._module = import_module(self._module_path)
+        return self._module
+
+    def __getattr__(self, item):
+        return getattr(self._load(), item)
+
+
+gemini_service = _LazyModule("app.services.gemini_service")
+scoring_service = _LazyModule("app.services.scoring_service")
+file_service = _LazyModule("app.services.file_service")
+harness_agent_client = _LazyModule("app.services.harness_agent_client")
+
+
+def _is_harness_or_timeout_error(exc: Exception) -> bool:
+    return isinstance(exc, asyncio.TimeoutError) or exc.__class__.__name__ == "HarnessAgentError"
+
+
 _gemini = gemini_service
+MAX_CODE_EVALS = 3
+CODE_EVAL_GRACE_SECONDS = 60
+_QUIZ_GENERATE_TIMEOUT_S = 12.0
+_QUIZ_FALLBACK_TIMEOUT_S = 14.0
+_QUIZ_PARSE_TIMEOUT_S = 20.0
+_QUIZ_EMAIL_NOTIFY_TIMEOUT_S = 8.0
+_QUIZ_CODE_EVAL_TIMEOUT_S = 25.0
 
 
 class QuizMagicLinkContext(BaseModel):
@@ -41,6 +82,114 @@ class QuizMagicLinkContext(BaseModel):
     job_title: Optional[str] = None
     has_existing_account: bool
     status: Literal["pending", "started", "completed"]
+
+
+async def _run_quiz_generation_with_fallback(
+    *,
+    request: Request | None,
+    jd_text: str,
+    skills: list[str],
+    easy: int,
+    medium: int,
+    hard: int,
+) -> list[dict]:
+    try:
+        auth_header = request.headers.get("authorization") if request else None
+        result = await asyncio.wait_for(
+            harness_agent_client.run_agent(
+                "quiz_generator",
+                {
+                    "jd_text": jd_text,
+                    "skills": skills,
+                    "easy": easy,
+                    "medium": medium,
+                    "hard": hard,
+                },
+                auth_header,
+                timeout_s=_QUIZ_GENERATE_TIMEOUT_S,
+            ),
+            timeout=_QUIZ_GENERATE_TIMEOUT_S,
+        )
+        if isinstance(result, dict):
+            questions = result.get("questions")
+            if isinstance(questions, list):
+                return questions
+        return result if isinstance(result, list) else []
+    except Exception as runtime_exc:
+        if not _is_harness_or_timeout_error(runtime_exc):
+            raise
+        logger.warning(
+            "Harness/runtime quiz_generator failed, using deterministic fallback questions: %s",
+            runtime_exc,
+        )
+        return _fallback_quiz_questions(
+            skills=skills,
+            easy=easy,
+            medium=medium,
+            hard=hard,
+        )
+
+
+async def _run_quiz_document_parse_with_fallback(doc_text: str, request: Request | None = None) -> list[dict]:
+    try:
+        auth_header = request.headers.get("authorization") if request else None
+        result = await asyncio.wait_for(
+            harness_agent_client.run_agent(
+                "quiz_parser",
+                {"doc_text": doc_text},
+                auth_header,
+                timeout_s=_QUIZ_PARSE_TIMEOUT_S,
+            ),
+            timeout=_QUIZ_PARSE_TIMEOUT_S,
+        )
+        if isinstance(result, dict):
+            questions = result.get("questions")
+            if isinstance(questions, list):
+                return questions
+        return result if isinstance(result, list) else []
+    except Exception as runtime_exc:
+        if not _is_harness_or_timeout_error(runtime_exc):
+            raise
+        logger.warning("Harness fallback quiz_document_parse failed, using direct parser: %s", runtime_exc)
+        return await asyncio.wait_for(
+            gemini_service.parse_quiz_from_document(doc_text),
+            timeout=_QUIZ_PARSE_TIMEOUT_S,
+        )
+
+
+async def _run_code_eval_with_fallback(
+    *,
+    request: Request | None,
+    problem: str,
+    code: str,
+    language: str,
+) -> dict:
+    try:
+        auth_header = request.headers.get("authorization") if request else None
+        result = await asyncio.wait_for(
+            harness_agent_client.run_agent(
+                "code_evaluator",
+                {
+                    "problem_statement": problem,
+                    "user_code": code,
+                    "language": language,
+                },
+                auth_header,
+                timeout_s=_QUIZ_CODE_EVAL_TIMEOUT_S,
+            ),
+            timeout=_QUIZ_CODE_EVAL_TIMEOUT_S,
+        )
+        if isinstance(result, dict) and isinstance(result.get("code_eval_result"), dict):
+            return result["code_eval_result"]
+        return result if isinstance(result, dict) else {}
+    except Exception as runtime_exc:
+        if not _is_harness_or_timeout_error(runtime_exc):
+            raise
+        logger.warning("Harness fallback code_evaluator failed, using direct evaluator: %s", runtime_exc)
+        return await asyncio.wait_for(
+            _gemini.evaluate_code_submission(problem, code, language),
+            timeout=_QUIZ_CODE_EVAL_TIMEOUT_S,
+        )
 
 
 def _fallback_quiz_questions(
@@ -69,7 +218,7 @@ def _fallback_quiz_questions(
         skill = pool[idx % len(pool)]
         difficulty = difficulties[idx]
         if difficulty == "easy":
-            question_text = f"Which statement best describes {skill} in software development?"
+            question_text = f"[Q{idx + 1}] Which statement best describes {skill} in software development?"
             correct_option = f"{skill} helps build reliable software outcomes"
             distractors = [
                 f"{skill} is unrelated to development quality",
@@ -78,7 +227,7 @@ def _fallback_quiz_questions(
             ]
             weight = 1
         elif difficulty == "medium":
-            question_text = f"For {skill}, which approach is generally recommended in production systems?"
+            question_text = f"[Q{idx + 1}] For {skill}, which approach is generally recommended in production systems?"
             correct_option = "Use repeatable, testable workflows with monitoring"
             distractors = [
                 "Skip logging to improve speed in all cases",
@@ -87,7 +236,7 @@ def _fallback_quiz_questions(
             ]
             weight = 2
         else:
-            question_text = f"In advanced {skill} scenarios, what is the strongest engineering practice?"
+            question_text = f"[Q{idx + 1}] In advanced {skill} scenarios, what is the strongest engineering practice?"
             correct_option = "Design for failure handling, observability, and scalability"
             distractors = [
                 "Rely only on manual testing in production",
@@ -97,7 +246,8 @@ def _fallback_quiz_questions(
             weight = 3
 
         options = [correct_option, *distractors]
-        random.shuffle(options)
+        rng = random.Random(f"{skill}:{difficulty}:{idx}")
+        rng.shuffle(options)
         correct = options.index(correct_option)
 
         questions.append({
@@ -112,12 +262,77 @@ def _fallback_quiz_questions(
     return questions
 
 
-def _resolve_quiz_token(token: Optional[str], x_quiz_token: Optional[str]) -> str:
+def _build_magic_link(raw_token: str) -> str:
+    return f"{settings.FRONTEND_URL.rstrip('/')}/take-quiz?token={raw_token}"
+
+
+def _new_quiz_token_pair() -> tuple[str, str]:
+    raw_token = secrets.token_urlsafe(32)
+    return raw_token, QuizAttempt.hash_access_token(raw_token)
+
+
+def _prepare_questions_for_persist(
+    raw_questions: list[dict[str, Any]],
+    *,
+    expected_easy: int | None = None,
+    expected_medium: int | None = None,
+    expected_hard: int | None = None,
+    fallback_skills: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    validated: list[dict[str, Any]] = []
+    for raw in raw_questions:
+        validated.append(validate_question(raw))
+
+    validated, dropped = deduplicate_questions(validated)
+    if dropped:
+        logger.warning("Dropped %s duplicate/invalid question(s) before quiz persistence", dropped)
+
+    if (
+        expected_easy is not None
+        and expected_medium is not None
+        and expected_hard is not None
+    ):
+        expected = {
+            "easy": max(0, int(expected_easy)),
+            "medium": max(0, int(expected_medium)),
+            "hard": max(0, int(expected_hard)),
+        }
+        observed = difficulty_counts(validated)
+        for diff_name, expected_count in expected.items():
+            actual_count = observed.get(diff_name, 0)
+            if actual_count != expected_count:
+                logger.warning(
+                    "Difficulty drift detected: expected %s=%s, got %s",
+                    diff_name,
+                    expected_count,
+                    actual_count,
+                )
+
+        def _fallback_factory(missing_easy: int, missing_medium: int, missing_hard: int) -> list[dict[str, Any]]:
+            return _fallback_quiz_questions(
+                fallback_skills or [],
+                missing_easy,
+                missing_medium,
+                missing_hard,
+            )
+
+        validated = rebalance_difficulty_distribution(
+            validated,
+            expected_easy=expected["easy"],
+            expected_medium=expected["medium"],
+            expected_hard=expected["hard"],
+            fallback_factory=_fallback_factory,
+        )
+
+    return validated
+
+
+def _resolve_quiz_token(token: Optional[str], x_quiz_token: Optional[str], *, missing_status: int = 400) -> str:
     if token and not x_quiz_token:
         logger.warning("Quiz token via query param is deprecated")
     resolved_token = (x_quiz_token or token or "").strip()
     if not resolved_token:
-        raise HTTPException(status_code=400, detail="Quiz token is required")
+        raise HTTPException(status_code=missing_status, detail="Quiz token is required")
     return resolved_token
 
 
@@ -125,16 +340,13 @@ def _quiz_token_hash_candidates(token: str) -> list[str]:
     """
     Build hash candidates for quiz auth.
 
-    Primary path uses sha256(raw_token). As a compatibility path for existing
-    candidate dashboard payloads, allow an already-hashed 64-char hex token only
-    on authenticated start/submit endpoints where candidate ownership is enforced.
+    Only raw tokens are accepted as credentials. Pre-hashed 64-char values are
+    explicitly rejected to prevent token_hash replay attacks.
     """
     normalized = (token or "").strip()
-    hashed = QuizAttempt.hash_access_token(normalized)
-    out = [hashed]
     if len(normalized) == 64 and all(ch in string.hexdigits for ch in normalized):
-        out.append(normalized.lower())
-    return out
+        raise HTTPException(status_code=400, detail="Invalid token format")
+    return [QuizAttempt.hash_access_token(normalized)]
 
 
 async def _load_attempt_by_token(
@@ -236,9 +448,21 @@ async def claim_quiz_magic_link(
         include_candidate=True,
         include_quiz=False,
     )
+    if attempt.token_expires_at:
+        expires_utc = (
+            attempt.token_expires_at
+            if attempt.token_expires_at.tzinfo is not None
+            else attempt.token_expires_at.replace(tzinfo=timezone.utc)
+        )
+        if datetime.now(timezone.utc) > expires_utc:
+            return JSONResponse(status_code=410, content={"detail": "Invitation has expired"})
     candidate = attempt.candidate
     if not candidate:
         raise HTTPException(status_code=404, detail="Assessment candidate record not found")
+    # If this invite is already bound to the current candidate account,
+    # treat claim as idempotent success even if resume-parsed email differs.
+    if candidate.user_id == user.id:
+        return {"message": "Assessment invite linked to your account"}
     if not candidate.email:
         raise HTTPException(status_code=409, detail="Assessment invite has no candidate email to verify")
     if candidate.email.lower() != user.email.lower():
@@ -251,9 +475,8 @@ async def claim_quiz_magic_link(
             status_code=409,
             detail="This assessment invite has already been claimed by another account.",
         )
-    if candidate.user_id != user.id:
-        candidate.user_id = user.id
-        await db.commit()
+    candidate.user_id = user.id
+    await db.commit()
     return {"message": "Assessment invite linked to your account"}
 
 
@@ -299,37 +522,34 @@ async def generate_quiz(
 
     all_skills = (jd.must_have_skills or []) + (jd.good_to_have_skills or [])
 
-    try:
-        harness_result = await harness_agent_client.run_agent(
-            "quiz_generator",
-            {
-                "jd_text": jd.raw_text or jd.description or jd.title,
-                "skills": all_skills,
-                "easy": settings.QUIZ_EASY_COUNT,
-                "medium": settings.QUIZ_MEDIUM_COUNT,
-                "hard": settings.QUIZ_HARD_COUNT,
-            },
-            request.headers.get("authorization"),
+    if settings.DATABASE_URL.startswith("sqlite"):
+        # Local sqlite runtime is prone to long stalls when AI generation fails.
+        # Keep quiz generation responsive by using deterministic questions.
+        questions_data = _fallback_quiz_questions(
+            all_skills,
+            settings.QUIZ_EASY_COUNT,
+            settings.QUIZ_MEDIUM_COUNT,
+            settings.QUIZ_HARD_COUNT,
         )
-        questions_data = (
-            harness_result.get("questions")
-            if isinstance(harness_result, dict)
-            else []
-        )
-    except HarnessAgentError as exc:
-            logger.warning("Harness fallback quiz_generator: %s", exc)
-            try:
-                questions_data = await _gemini.generate_quiz_questions(
+    else:
+        try:
+            questions_data = await asyncio.wait_for(
+                _run_quiz_generation_with_fallback(
+                    request=request,
                     jd_text=jd.raw_text or jd.description or jd.title,
                     skills=all_skills,
                     easy=settings.QUIZ_EASY_COUNT,
                     medium=settings.QUIZ_MEDIUM_COUNT,
                     hard=settings.QUIZ_HARD_COUNT,
-                )
-            except Exception:
-                questions_data = []
-    except Exception:
-        questions_data = []
+                ),
+                timeout=_QUIZ_FALLBACK_TIMEOUT_S,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Quiz generation timed out for job_id=%s; using deterministic fallback", jd.id)
+            questions_data = []
+        except Exception as gen_exc:
+            logger.warning("Quiz generation degraded for job_id=%s: %s", jd.id, gen_exc)
+            questions_data = []
 
     if not questions_data:
         questions_data = _fallback_quiz_questions(
@@ -338,10 +558,23 @@ async def generate_quiz(
             settings.QUIZ_MEDIUM_COUNT,
             settings.QUIZ_HARD_COUNT,
         )
+    try:
+        questions_data = _prepare_questions_for_persist(
+            questions_data,
+            expected_easy=settings.QUIZ_EASY_COUNT,
+            expected_medium=settings.QUIZ_MEDIUM_COUNT,
+            expected_hard=settings.QUIZ_HARD_COUNT,
+            fallback_skills=all_skills,
+        )
+    except QuestionValidationError as validation_error:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid generated quiz questions: {validation_error}",
+        ) from validation_error
 
     quiz = Quiz(
         job_id=jd.id,
-        title=body.custom_title or f"{jd.title} – Assessment",
+        title=body.custom_title or f"{jd.title} - Assessment",
         duration_minutes=body.duration_minutes or settings.QUIZ_DURATION_MINUTES,
     )
     db.add(quiz)
@@ -361,6 +594,23 @@ async def generate_quiz(
         db.add(q)
 
     await db.flush()
+    if settings.DATABASE_URL.startswith("sqlite"):
+        q_count = len(questions_data)
+        await log_action(
+            db,
+            user.id,
+            "GENERATE_QUIZ",
+            "quiz",
+            quiz.id,
+            details={"auto_distributed_to": 0, "distribution_skipped": "sqlite"},
+        )
+        await db.commit()
+        await db.refresh(quiz)
+        return QuizOut(
+            id=quiz.id, job_id=quiz.job_id, title=quiz.title,
+            duration_minutes=quiz.duration_minutes, is_active=quiz.is_active,
+            question_count=q_count, created_at=quiz.created_at,
+        )
 
     portal_cands_res = await db.execute(
         select(Candidate).where(
@@ -372,19 +622,22 @@ async def generate_quiz(
     portal_cands = portal_cands_res.scalars().all()
 
     # BUG 8 FIX: check for existing quiz attempts to avoid duplicate emails
-    existing_attempt_res = await db.execute(
-        select(QuizAttempt.candidate_id).where(
-            QuizAttempt.quiz_id == quiz.id,
-            QuizAttempt.candidate_id.in_([c.id for c in portal_cands]),
+    if portal_cands:
+        existing_attempt_res = await db.execute(
+            select(QuizAttempt.candidate_id).where(
+                QuizAttempt.quiz_id == quiz.id,
+                QuizAttempt.candidate_id.in_([c.id for c in portal_cands]),
+            )
         )
-    )
-    already_assigned = set(existing_attempt_res.scalars().all())
+        already_assigned = set(existing_attempt_res.scalars().all())
+    else:
+        already_assigned = set()
 
     # Collect email tasks to send AFTER commit (BUG 3 FIX)
     email_tasks: list[tuple] = []
     for c in portal_cands:
         if c.id in already_assigned:
-            continue  # BUG 8 FIX: skip — already has a token for this quiz
+            continue  # BUG 8 FIX: skip - already has a token for this quiz
         token = secrets.token_urlsafe(32)
         db.add(QuizAttempt(
             quiz_id=quiz.id,
@@ -403,54 +656,71 @@ async def generate_quiz(
                      details={"auto_distributed_to": len(portal_cands) - len(already_assigned)})
 
     q_count = len(questions_data)
-    # BUG 3 FIX: commit FIRST — tokens now durable — then send emails
+    # BUG 3 FIX: commit FIRST - tokens now durable - then send emails
     await db.commit()
     await db.refresh(quiz)
 
-    # Now send emails — tokens guaranteed to exist in DB
+    # Now send emails - tokens guaranteed to exist in DB
     from app.services.email_service import send_email
 
-    # BUG-6 FIX: emails were sent sequentially (one asyncio.to_thread per SMTP
-    # round-trip); at 100 candidates × ~500ms = 50s request latency, hitting
-    # gateway timeout. Gather all sends concurrently.
-    # BUG-13 FIX: push_to_candidate_by_email ("check your email") was fired
-    # unconditionally, even when the preceding SMTP call failed. Notification now
-    # only fires inside the try-block confirming the email was actually sent.
-    async def _send_and_notify(cand_email: str, safe_name: str, magic_link: str):
-        safe_quiz_title = html.escape(quiz.title or "Assessment", quote=True)
-        subject = f"Action Required: Assessment Invitation for {quiz.title}"
-        html_body = f"""
-        <div style="font-family:sans-serif; max-width:600px; margin:auto; padding:20px; border:1px solid #ddd; border-radius:8px;">
-            <h2 style="color:#2563eb;">Assessment Invitation</h2>
-            <p>Hi <b>{safe_name}</b>,</p>
-            <p>You have been shortlisted! We'd like to invite you to take a technical assessment for <b>{safe_quiz_title}</b>.</p>
-            <p style="margin: 30px 0;">
-                <a href="{magic_link}" style="background-color:#2563eb; color:white; padding:12px 24px; text-decoration:none; border-radius:6px; font-weight:bold;">Start Assessment</a>
-            </p>
-            <p style="color:#666; font-size:12px;">If the button doesn't work, copy and paste this link:<br>{magic_link}</p>
-        </div>
-        """
+    # Keep gather limited to SMTP I/O. DB writes happen after gather to avoid
+    # concurrent use of one AsyncSession across tasks.
+    async def _send_email_safe(cand_email: str, subject: str, html_body: str) -> tuple[str, bool]:
         try:
-            await asyncio.to_thread(send_email, cand_email, subject, html_body)
-            # BUG-13 FIX: only push notification when email actually succeeded
-            await push_to_candidate_by_email(
-                db, cand_email,
-                title=f"Assessment Invitation: {quiz.title}",
-                message="You've been shortlisted! A technical assessment is waiting for you. Check your email for the secure link.",
-                ntype=NotificationType.quiz_link,
-                related_id=quiz.job_id,
+            await asyncio.wait_for(
+                asyncio.to_thread(send_email, cand_email, subject, html_body),
+                timeout=_QUIZ_EMAIL_NOTIFY_TIMEOUT_S,
             )
+            return cand_email, True
         except Exception as email_err:
             import logging as _log
+            from app.services.email_service import _redact_email
             _log.getLogger(__name__).error(
-                "Auto-distribute email failed for %s: %s", cand_email, email_err)
+                "Auto-distribute email failed for %s: %s", _redact_email(cand_email), email_err)
+            return cand_email, False
 
     if email_tasks:
-        await asyncio.gather(*[
-            _send_and_notify(cand_email, safe_name, magic_link)
-            for cand_email, safe_name, magic_link in email_tasks
-        ])
-        await db.commit()
+        send_payloads: list[tuple[str, str, str]] = []
+        safe_quiz_title = html.escape(quiz.title or "Assessment", quote=True)
+        for cand_email, safe_name, magic_link in email_tasks:
+            subject = f"Action Required: Assessment Invitation for {quiz.title}"
+            html_body = f"""
+            <div style="font-family:sans-serif; max-width:600px; margin:auto; padding:20px; border:1px solid #ddd; border-radius:8px;">
+                <h2 style="color:#2563eb;">Assessment Invitation</h2>
+                <p>Hi <b>{safe_name}</b>,</p>
+                <p>You have been shortlisted! We'd like to invite you to take a technical assessment for <b>{safe_quiz_title}</b>.</p>
+                <p style="margin: 30px 0;">
+                    <a href="{magic_link}" style="background-color:#2563eb; color:white; padding:12px 24px; text-decoration:none; border-radius:6px; font-weight:bold;">Start Assessment</a>
+                </p>
+                <p style="color:#666; font-size:12px;">If the button doesn't work, copy and paste this link:<br>{magic_link}</p>
+            </div>
+            """
+            send_payloads.append((cand_email, subject, html_body))
+
+        send_results = await asyncio.wait_for(
+            asyncio.gather(*[
+                _send_email_safe(cand_email, subject, html_body)
+                for cand_email, subject, html_body in send_payloads
+            ]),
+            timeout=_QUIZ_EMAIL_NOTIFY_TIMEOUT_S,
+        )
+        successful_emails = [email for email, ok in send_results if ok]
+        if successful_emails:
+            try:
+                await asyncio.wait_for(
+                    push_to_candidates_by_emails(
+                        db,
+                        successful_emails,
+                        title=f"Assessment Invitation: {quiz.title}",
+                        message="You've been shortlisted! A technical assessment is waiting for you. Check your email for the secure link.",
+                        ntype=NotificationType.quiz_link,
+                        related_id=quiz.job_id,
+                    ),
+                    timeout=_QUIZ_EMAIL_NOTIFY_TIMEOUT_S,
+                )
+                await db.commit()
+            except Exception as notify_err:
+                logger.warning("Post-quiz notification fanout failed for quiz_id=%s: %s", quiz.id, notify_err)
 
     return QuizOut(
         id=quiz.id, job_id=quiz.job_id, title=quiz.title,
@@ -461,6 +731,7 @@ async def generate_quiz(
 
 @router.post("/from-file", response_model=QuizOut, status_code=201)
 async def create_quiz_from_file(
+    request: Request,
     job_id: str,
     duration_minutes: int = 30,
     file: UploadFile = File(...),
@@ -490,13 +761,22 @@ async def create_quiz_from_file(
             status_code=422, detail="Could not extract any text from the uploaded file.")
 
     try:
-        questions_data = await gemini_service.parse_quiz_from_document(doc_text)
+        questions_data = await _run_quiz_document_parse_with_fallback(doc_text, request)
     except Exception as exc:
         logger.exception("AI parsing failed in create_quiz_from_file")
         raise HTTPException(status_code=500, detail="An internal error occurred.") from exc
 
     if not questions_data:
         raise HTTPException(status_code=422, detail="No MCQ questions found in the document.")
+    try:
+        questions_data = _prepare_questions_for_persist(questions_data)
+    except QuestionValidationError as validation_error:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid parsed quiz questions: {validation_error}",
+        ) from validation_error
+    if not questions_data:
+        raise HTTPException(status_code=422, detail="No valid MCQ questions found in the uploaded document.")
 
     fname = os.path.splitext(file.filename or "Quiz")[
         0].replace("_", " ").replace("-", " ").title()
@@ -589,86 +869,156 @@ async def get_questions_with_answers(
     return res.scalars().all()
 
 
+async def _dispatch_quiz_links_background(
+    links_to_send: list[dict],
+    quiz_title: str,
+    quiz_id: str,
+) -> None:
+    if not links_to_send:
+        return
+
+    from app.services.email_service import send_email, _redact_email
+
+    async def _send_link_safe(link_info: dict) -> tuple[str, str, bool]:
+        normalized_email = (link_info.get("email") or "").strip().lower()
+        try:
+            await asyncio.to_thread(
+                send_email,
+                link_info["email"],
+                link_info["subject"],
+                link_info["html_body"],
+            )
+            return str(link_info["candidate_id"]), normalized_email, True
+        except Exception as email_err:
+            logger.error(
+                "Email send failed for %s: %s",
+                _redact_email(link_info.get("email") or ""),
+                email_err,
+            )
+            return str(link_info["candidate_id"]), normalized_email, False
+
+    send_results = await asyncio.gather(*[_send_link_safe(info) for info in links_to_send])
+    successful_candidate_ids = [cid for cid, _email, ok in send_results if ok]
+    failed_candidate_ids = [cid for cid, _email, ok in send_results if not ok]
+    successful_emails = [email for _cid, email, ok in send_results if ok and email]
+
+    async with AsyncSessionLocal() as notif_db:
+        try:
+            if successful_emails:
+                await push_to_candidates_by_emails(
+                    notif_db,
+                    successful_emails,
+                    title=f"Assessment Invitation: {quiz_title}",
+                    message="You have been invited to take a technical assessment. Check your email for the secure link.",
+                    ntype=NotificationType.quiz_link,
+                    related_id=quiz_id,
+                )
+            await notif_db.commit()
+        except Exception as notif_exc:
+            await notif_db.rollback()
+            logger.warning(
+                "Quiz link background notification write failed quiz_id=%s error=%s",
+                quiz_id,
+                notif_exc,
+            )
+
+    logger.info(
+        "Quiz link background dispatch summary quiz_id=%s success=%d failed=%d",
+        quiz_id,
+        len(successful_candidate_ids),
+        len(failed_candidate_ids),
+    )
+
+
 @router.post("/send-links")
 async def send_quiz_links(
     body: SendQuizLinkRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_hr),
 ):
     quiz = await _assert_quiz_owner(body.quiz_id, user, db)
+    candidate_ids = list(dict.fromkeys(body.candidate_ids))
+    if not candidate_ids:
+        return {"message": "No candidate IDs provided", "links": []}
 
     cand_res = await db.execute(
-        select(Candidate).where(Candidate.id.in_(body.candidate_ids))
+        select(Candidate).where(
+            Candidate.id.in_(candidate_ids),
+            Candidate.job_id == quiz.job_id,
+        )
     )
-    existing_candidates = {c.id: c for c in cand_res.scalars().all()}
+    existing_candidates = {str(c.id): c for c in cand_res.scalars().all()}
+    invalid_ids = [cid for cid in candidate_ids if str(cid) not in existing_candidates]
+    if invalid_ids:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Candidates {invalid_ids} do not belong to job {quiz.job_id}",
+        )
 
     existing_attempts_res = await db.execute(
         select(QuizAttempt).where(
             QuizAttempt.quiz_id == body.quiz_id,
-            QuizAttempt.candidate_id.in_(body.candidate_ids),
-        )
+            QuizAttempt.candidate_id.in_(candidate_ids),
+        ).order_by(QuizAttempt.created_at.desc())
     )
     existing_attempt_rows = list(existing_attempts_res.scalars().all())
     existing_attempts: dict[str, list[QuizAttempt]] = {}
     for row in existing_attempt_rows:
         existing_attempts.setdefault(str(row.candidate_id), []).append(row)
 
-    from app.services.email_service import send_email
-
     created = 0
-    links = []
-    new_links = []
+    rotated = 0
+    links: list[dict[str, Any]] = []
+    skipped_links: list[dict[str, Any]] = []
+    new_links: list[dict[str, Any]] = []
 
-    for cid in body.candidate_ids:
-        if cid not in existing_candidates:
-            continue
-
-        cand_email = existing_candidates[cid].email or "unknown@email.com"
-        cand_name = existing_candidates[cid].name or "Candidate"
-
+    for cid in candidate_ids:
+        candidate = existing_candidates[str(cid)]
+        cand_email = candidate.email or "unknown@email.com"
+        cand_name = candidate.name or "Candidate"
         candidate_attempts = existing_attempts.get(str(cid), [])
-        if candidate_attempts:
-            attempt = candidate_attempts[0]
-            reusable_pending_token: Optional[str] = None
-            for candidate_attempt in candidate_attempts:
-                if candidate_attempt.status != QuizStatus.pending or not candidate_attempt.token_hash:
-                    continue
-                token_valid = True
-                if candidate_attempt.token_expires_at:
-                    expires_utc = (
-                        candidate_attempt.token_expires_at
-                        if candidate_attempt.token_expires_at.tzinfo is not None
-                        else candidate_attempt.token_expires_at.replace(tzinfo=timezone.utc)
-                    )
-                    token_valid = datetime.now(timezone.utc) <= expires_utc
-                if token_valid:
-                    reusable_pending_token = candidate_attempt.token_hash
-                    attempt = candidate_attempt
-                    break
 
-            if reusable_pending_token:
-                magic_link = f"{settings.FRONTEND_URL}/take-quiz?token={reusable_pending_token}"
-                links.append({"name": cand_name, "email": cand_email,
-                             "link": magic_link + " (Already Sent)"})
+        raw_token: str | None = None
+        link_state = "created"
+
+        if candidate_attempts:
+            pending_attempt = next(
+                (attempt for attempt in candidate_attempts if attempt.status == QuizStatus.pending),
+                None,
+            )
+            if pending_attempt is None:
+                latest = candidate_attempts[0]
+                reason = f"attempt_status={latest.status.value}; cannot resend"
+                skipped_links.append({"candidate_id": str(cid), "reason": reason})
+                links.append(
+                    {
+                        "name": cand_name,
+                        "email": cand_email,
+                        "link": None,
+                        "reason": reason,
+                    }
+                )
                 continue
 
-            token = secrets.token_urlsafe(32)
-            attempt.token_hash = QuizAttempt.hash_access_token(token)
-            attempt.token_expires_at = datetime.now(timezone.utc) + timedelta(days=7)
-            magic_link = f"{settings.FRONTEND_URL}/take-quiz?token={token}"
-            links.append({"name": cand_name, "email": cand_email,
-                         "link": magic_link + " (Already Sent)"})
-            continue
+            raw_token, token_hash = _new_quiz_token_pair()
+            pending_attempt.token_hash = token_hash
+            pending_attempt.token_expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+            rotated += 1
+            link_state = "rotated"
+        else:
+            raw_token, token_hash = _new_quiz_token_pair()
+            new_attempt = QuizAttempt(
+                quiz_id=quiz.id,
+                candidate_id=cid,
+                token_hash=token_hash,
+                token_expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+            )
+            db.add(new_attempt)
+            existing_attempts.setdefault(str(cid), []).append(new_attempt)
+            created += 1
 
-        token = secrets.token_urlsafe(32)
-        db.add(QuizAttempt(
-            quiz_id=quiz.id,
-            candidate_id=cid,
-            token_hash=QuizAttempt.hash_access_token(token),
-            token_expires_at=datetime.now(timezone.utc) + timedelta(days=7),  # BUG 7 FIX
-        ))
-        magic_link = f"{settings.FRONTEND_URL}/take-quiz?token={token}"
-
+        magic_link = _build_magic_link(raw_token)
         safe_quiz_title = html.escape(quiz.title or "Assessment", quote=True)
         subject = f"Action Required: Assessment Invitation for {quiz.title}"
         html_body = f"""
@@ -682,18 +1032,17 @@ async def send_quiz_links(
             <p style="color:#666; font-size:12px;">If the button doesn't work, copy and paste this link into your browser:<br>{magic_link}</p>
         </div>
         """
-        
+
         entry = {
-            "candidate_id": cid,
+            "candidate_id": str(cid),
             "name": cand_name,
             "email": cand_email,
             "link": magic_link,
             "subject": subject,
             "html_body": html_body,
         }
-        links.append({"name": cand_name, "email": cand_email, "link": magic_link})
+        links.append({"name": cand_name, "email": cand_email, "link": magic_link, "state": link_state})
         new_links.append(entry)
-        created += 1
 
     if new_links:
         names_preview = ", ".join([link["name"] for link in new_links[:3]])
@@ -702,46 +1051,41 @@ async def send_quiz_links(
         await push_notification(
             db, user.id,
             title=f"Quiz links sent: {quiz.title}",
-            message=f"Sent to {created} candidate(s): {names_preview}",
+            message=f"Sent to {len(new_links)} candidate(s): {names_preview}",
             ntype=NotificationType.quiz_link,
             related_id=quiz.id,
         )
-    await log_action(db, user.id, "SEND_QUIZ_LINKS", "quiz", quiz.id, details={"candidate_count": created})
+    await log_action(
+        db,
+        user.id,
+        "SEND_QUIZ_LINKS",
+        "quiz",
+        quiz.id,
+        details={
+            "candidate_count": len(new_links),
+            "created_count": created,
+            "rotated_count": rotated,
+            "skipped_count": len(skipped_links),
+        },
+    )
     await db.flush()
+    logger.info("quiz.generate question_rows_created quiz_id=%s", quiz.id)
     await db.commit()
-
-    async def _send_link_safe(link_info: dict) -> tuple[str, bool]:
-        try:
-            await asyncio.to_thread(send_email, link_info["email"], link_info["subject"], link_info["html_body"])
-            await push_to_candidate_by_email(
-                db, link_info["email"],
-                title=f"Assessment Invitation: {quiz.title}",
-                message="You have been invited to take a technical assessment. Check your email for the secure link.",
-                ntype=NotificationType.quiz_link,
-                # BUG #6 FIX (HIGH): was quiz.job_id — candidate deep-links based on
-                # related_id would navigate to the JD page instead of the quiz.
-                related_id=quiz.id,
-            )
-            return str(link_info["candidate_id"]), True
-        except Exception as email_err:
-            import logging
-            logging.getLogger(__name__).error(
-                "Email send failed for %s: %s", link_info["email"], email_err)
-            return str(link_info["candidate_id"]), False
-
     if new_links:
-        send_results = await asyncio.gather(*[_send_link_safe(info) for info in new_links])
-        successful_candidate_ids = [cid for cid, ok in send_results if ok]
-        failed_candidate_ids = [cid for cid, ok in send_results if not ok]
-        logger.info(
-            "Quiz link dispatch summary quiz_id=%s success=%d failed=%d",
+        background_tasks.add_task(
+            _dispatch_quiz_links_background,
+            new_links,
+            quiz.title,
             quiz.id,
-            len(successful_candidate_ids),
-            len(failed_candidate_ids),
         )
-        await db.commit()
 
-    return {"message": f"Quiz links created for {created} candidates", "links": links}
+    return {
+        "message": f"Quiz links queued for dispatch to {len(new_links)} candidates",
+        "links": links,
+        "created_count": created,
+        "rotated_count": rotated,
+        "skipped": skipped_links,
+    }
 
 
 @router.post("/start", response_model=QuizStartResponse)
@@ -795,6 +1139,7 @@ async def start_quiz(
     if attempt.status == QuizStatus.timed_out:
         raise HTTPException(status_code=400, detail="Quiz time expired")
 
+    response_questions: list[dict[str, Any]] = []
     if attempt.status == QuizStatus.pending:
         attempt.status = QuizStatus.in_progress
         attempt.started_at = datetime.now(timezone.utc)
@@ -803,27 +1148,87 @@ async def start_quiz(
         )
         questions = list(qres.scalars().all())
         random.shuffle(questions)
-        attempt.question_order = [q.id for q in questions]
+        attempt.question_order = [str(q.id) for q in questions]
+        snapshot: list[dict[str, Any]] = []
+        for question in questions:
+            difficulty = question.difficulty.value if hasattr(question.difficulty, "value") else str(question.difficulty)
+            entry = {
+                "id": str(question.id),
+                "text": question.question_text,
+                "options": list(question.options or []),
+                "correct_answer": int(question.correct_answer),
+                "weight": int(question.weight or 1),
+                "difficulty": difficulty,
+                "skill_tag": question.skill_tag,
+            }
+            snapshot.append(entry)
+            response_questions.append(
+                {
+                    "id": str(question.id),
+                    "question_text": question.question_text,
+                    "options": list(question.options or []),
+                    "difficulty": difficulty,
+                    "skill_tag": question.skill_tag,
+                    "weight": int(question.weight or 1),
+                }
+            )
+        attempt.question_snapshot = snapshot
     else:
-        qres = await db.execute(
-            select(Question).where(Question.quiz_id == attempt.quiz_id)
-        )
-        all_questions = {q.id: q for q in qres.scalars().all()}
-        if attempt.question_order:
-            questions = [all_questions[qid]
-                         for qid in attempt.question_order if qid in all_questions]
-            # BUG #9 FIX (HIGH): Log when questions are silently dropped due to
-            # quiz edits mid-attempt so it's at least visible in telemetry.
-            dropped = len(attempt.question_order) - len(questions)
-            if dropped > 0:
-                import logging as _log
-                _log.getLogger(__name__).warning(
-                    "Quiz resume: %d question(s) dropped for attempt %s "
-                    "(quiz was edited mid-attempt)",
-                    dropped, attempt.id,
+        if isinstance(attempt.question_snapshot, list) and attempt.question_snapshot:
+            for item in attempt.question_snapshot:
+                if not isinstance(item, dict):
+                    continue
+                response_questions.append(
+                    {
+                        "id": str(item.get("id")),
+                        "question_text": item.get("text") or "",
+                        "options": list(item.get("options") or []),
+                        "difficulty": item.get("difficulty") or "medium",
+                        "skill_tag": item.get("skill_tag"),
+                        "weight": int(item.get("weight") or 1),
+                    }
                 )
+            if not attempt.question_order:
+                attempt.question_order = [str(item.get("id")) for item in attempt.question_snapshot if isinstance(item, dict)]
         else:
-            questions = list(all_questions.values())
+            qres = await db.execute(
+                select(Question).where(Question.quiz_id == attempt.quiz_id)
+            )
+            all_questions = {str(q.id): q for q in qres.scalars().all()}
+            if attempt.question_order:
+                ordered_questions = [all_questions[qid] for qid in attempt.question_order if qid in all_questions]
+                dropped = len(attempt.question_order) - len(ordered_questions)
+                if dropped > 0:
+                    logger.warning(
+                        "Quiz resume: %d question(s) dropped for attempt %s (quiz was edited mid-attempt)",
+                        dropped,
+                        attempt.id,
+                    )
+                for question in ordered_questions:
+                    difficulty = question.difficulty.value if hasattr(question.difficulty, "value") else str(question.difficulty)
+                    response_questions.append(
+                        {
+                            "id": str(question.id),
+                            "question_text": question.question_text,
+                            "options": list(question.options or []),
+                            "difficulty": difficulty,
+                            "skill_tag": question.skill_tag,
+                            "weight": int(question.weight or 1),
+                        }
+                    )
+            else:
+                for question in all_questions.values():
+                    difficulty = question.difficulty.value if hasattr(question.difficulty, "value") else str(question.difficulty)
+                    response_questions.append(
+                        {
+                            "id": str(question.id),
+                            "question_text": question.question_text,
+                            "options": list(question.options or []),
+                            "difficulty": difficulty,
+                            "skill_tag": question.skill_tag,
+                            "weight": int(question.weight or 1),
+                        }
+                    )
 
     await db.flush()
     await db.commit()
@@ -845,10 +1250,14 @@ async def start_quiz(
         started_at=attempt.started_at,
         questions=[
             QuestionOut(
-                id=q.id, question_text=q.question_text, options=q.options,
-                difficulty=q.difficulty, skill_tag=q.skill_tag, weight=q.weight,
+                id=q["id"],
+                question_text=q["question_text"],
+                options=q["options"],
+                difficulty=q["difficulty"],
+                skill_tag=q.get("skill_tag"),
+                weight=q["weight"],
             )
-            for q in questions
+            for q in response_questions
         ],
     )
 
@@ -862,7 +1271,8 @@ async def submit_quiz(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_candidate),
 ):
-    resolved_token = (x_quiz_token or token or "").strip()
+    resolved_token = _resolve_quiz_token(token, x_quiz_token, missing_status=401)
+    token_hashes = _quiz_token_hash_candidates(resolved_token)
 
     # BUG 2 FIX: original fetch had no row lock. Two simultaneous submits
     # (mobile retry, double-tap) could both pass the finalization guard and
@@ -870,8 +1280,6 @@ async def submit_quiz(
     # with_for_update() pattern already used in start_quiz.
     _use_row_lock = not settings.DATABASE_URL.startswith("sqlite")
     filters = [QuizAttempt.id == body.attempt_id]
-    if not resolved_token:
-        logger.warning("Quiz submit without token — fallback path used")
     _base_query = (
         select(QuizAttempt)
         .options(selectinload(QuizAttempt.quiz), selectinload(QuizAttempt.candidate))
@@ -882,12 +1290,18 @@ async def submit_quiz(
     attempt = (await db.execute(_base_query)).scalar_one_or_none()
     if not attempt:
         raise HTTPException(status_code=404, detail="Attempt not found")
-    if resolved_token:
-        token_hashes = _quiz_token_hash_candidates(resolved_token)
-        if attempt.token_hash not in token_hashes:
-            raise HTTPException(status_code=403, detail="Invalid quiz token for this attempt")
+    if attempt.token_hash not in token_hashes:
+        raise HTTPException(status_code=403, detail="Invalid quiz token for this attempt")
     if not attempt.candidate or attempt.candidate.user_id != user.id:
         raise HTTPException(status_code=403, detail="This assessment link is not assigned to your account")
+    if attempt.token_expires_at:
+        expires_utc = (
+            attempt.token_expires_at
+            if attempt.token_expires_at.tzinfo is not None
+            else attempt.token_expires_at.replace(tzinfo=timezone.utc)
+        )
+        if datetime.now(timezone.utc) > expires_utc:
+            raise HTTPException(status_code=403, detail="Quiz invitation has expired")
     client_ip = request.client.host if request.client else "unknown"
     logger.info("Quiz submit attempt=%s client_ip=%s", attempt.id, client_ip)
     if attempt.status in (QuizStatus.submitted, QuizStatus.timed_out):
@@ -910,19 +1324,49 @@ async def submit_quiz(
         await db.commit()
         raise HTTPException(status_code=400, detail="Quiz time has expired")
 
-    qres = await db.execute(
-        select(Question).where(Question.quiz_id == attempt.quiz_id)
-    )
-    db_questions = qres.scalars().all()
-    questions = [
-        {
-            "id": str(q.id), "correct_answer": q.correct_answer,
-            "difficulty": q.difficulty, "skill_tag": q.skill_tag, "weight": q.weight,
-        }
-        for q in db_questions
-    ]
+    questions: list[dict[str, Any]] = []
+    if isinstance(attempt.question_snapshot, list) and attempt.question_snapshot:
+        for item in attempt.question_snapshot:
+            if not isinstance(item, dict):
+                continue
+            questions.append(
+                {
+                    "id": str(item.get("id")) if item.get("id") is not None else None,
+                    "correct_answer": item.get("correct_answer"),
+                    "difficulty": item.get("difficulty"),
+                    "skill_tag": item.get("skill_tag"),
+                    "weight": item.get("weight"),
+                    "options": item.get("options"),
+                }
+            )
+    else:
+        logger.warning("Scoring attempt %s without question snapshot (legacy fallback)", attempt.id)
+        qres = await db.execute(select(Question).where(Question.quiz_id == attempt.quiz_id))
+        db_questions = qres.scalars().all()
+        questions = [
+            {
+                "id": str(q.id),
+                "correct_answer": q.correct_answer,
+                "difficulty": q.difficulty.value if hasattr(q.difficulty, "value") else str(q.difficulty),
+                "skill_tag": q.skill_tag,
+                "weight": q.weight,
+                "options": q.options,
+            }
+            for q in db_questions
+        ]
 
-    dynamic_max_score = sum(q.weight for q in db_questions)
+    def _resolved_weight(question: dict[str, Any]) -> int:
+        raw_weight = question.get("weight")
+        try:
+            weight = int(raw_weight) if raw_weight is not None else None
+        except (TypeError, ValueError):
+            weight = None
+        if not weight:
+            diff_key = str(question.get("difficulty") or "medium").strip().lower()
+            weight = scoring_service.WEIGHT_MAP.get(diff_key, 1)
+        return max(1, int(weight))
+
+    dynamic_max_score = sum(_resolved_weight(question) for question in questions)
     raw_score, skill_bd, diff_bd = scoring_service.compute_quiz_score(questions, body.answers)
 
     # FIX: preserve the Practical Coding entry written by /evaluate-code.
@@ -944,10 +1388,8 @@ async def submit_quiz(
     attempt.max_score = dynamic_max_score
     attempt.skill_breakdown = skill_bd
     attempt.difficulty_breakdown = diff_bd
-    # Never allow client payload to reduce previously recorded switches.
-    # This is still client-originated data, but monotonic update prevents
-    # trivial tampering by submitting a lower value at quiz end.
-    attempt.tab_switches = max(int(attempt.tab_switches or 0), int(body.tab_switches or 0))
+    # Server-side tab switch count is updated via a dedicated endpoint.
+    attempt.tab_switches = int(attempt.tab_switches or 0)
     attempt.status = QuizStatus.submitted
     attempt.submitted_at = datetime.now(timezone.utc)
 
@@ -1108,9 +1550,37 @@ async def get_quiz_master_answer_sheet(
         answers_obj = attempt.answers if isinstance(attempt.answers, dict) else {}
         answer_items: List[QuizAnswerItemOut] = []
 
-        for question in questions:
-            options = question.options or []
-            answer_key = str(question.id)
+        if isinstance(attempt.question_snapshot, list) and attempt.question_snapshot:
+            question_rows = [
+                {
+                    "id": str(item.get("id")),
+                    "question_text": item.get("text") or "",
+                    "options": list(item.get("options") or []),
+                    "correct_answer": item.get("correct_answer"),
+                    "difficulty": item.get("difficulty"),
+                    "skill_tag": item.get("skill_tag"),
+                    "weight": item.get("weight"),
+                }
+                for item in attempt.question_snapshot
+                if isinstance(item, dict)
+            ]
+        else:
+            question_rows = [
+                {
+                    "id": str(question.id),
+                    "question_text": question.question_text,
+                    "options": list(question.options or []),
+                    "correct_answer": question.correct_answer,
+                    "difficulty": question.difficulty.value if hasattr(question.difficulty, "value") else str(question.difficulty),
+                    "skill_tag": question.skill_tag,
+                    "weight": question.weight,
+                }
+                for question in questions
+            ]
+
+        for question in question_rows:
+            options = question.get("options") or []
+            answer_key = str(question.get("id"))
             selected_raw: Any = answers_obj.get(answer_key)
 
             selected_index: Optional[int] = None
@@ -1122,7 +1592,8 @@ async def get_quiz_master_answer_sheet(
             if selected_index is not None and (selected_index < 0 or selected_index >= len(options)):
                 selected_index = None
 
-            correct_index = question.correct_answer if 0 <= question.correct_answer < len(options) else None
+            correct_answer = question.get("correct_answer")
+            correct_index = correct_answer if isinstance(correct_answer, int) and 0 <= correct_answer < len(options) else None
             selected_text = options[selected_index] if selected_index is not None else None
             correct_text = options[correct_index] if correct_index is not None else None
             is_correct = (
@@ -1133,19 +1604,19 @@ async def get_quiz_master_answer_sheet(
 
             answer_items.append(
                 QuizAnswerItemOut(
-                    question_id=str(question.id),
+                    question_id=str(question.get("id")),
                     question_type="mcq",
-                    question_text=question.question_text,
-                    skill_tag=question.skill_tag,
-                    difficulty=question.difficulty.value if question.difficulty else None,
+                    question_text=question.get("question_text") or "",
+                    skill_tag=question.get("skill_tag"),
+                    difficulty=question.get("difficulty"),
                     selected_answer=selected_raw,
                     selected_option_index=selected_index,
                     selected_option_text=selected_text,
                     correct_option_index=correct_index,
                     correct_option_text=correct_text,
                     is_correct=is_correct,
-                    score_awarded=float(question.weight) if is_correct is True else (0.0 if selected_index is not None else None),
-                    max_score=float(question.weight),
+                    score_awarded=float(question.get("weight") or 1) if is_correct is True else (0.0 if selected_index is not None else None),
+                    max_score=float(question.get("weight") or 1),
                 )
             )
 
@@ -1214,63 +1685,105 @@ class CodeSubmitRequest(BaseModel):
     language: str
 
 
+@router.post("/attempt/{attempt_id}/tab-switch")
+@limiter.limit("120/minute")
+async def record_tab_switch(
+    request: Request,
+    attempt_id: str,
+    token: Optional[str] = Query(default=None),
+    x_quiz_token: Optional[str] = Header(default=None, alias="X-Quiz-Token"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_candidate),
+):
+    resolved_token = _resolve_quiz_token(token, x_quiz_token, missing_status=401)
+    token_hashes = _quiz_token_hash_candidates(resolved_token)
+    _use_row_lock = not settings.DATABASE_URL.startswith("sqlite")
+
+    attempt_query = (
+        select(QuizAttempt)
+        .options(selectinload(QuizAttempt.candidate))
+        .where(QuizAttempt.id == attempt_id)
+    )
+    if _use_row_lock:
+        attempt_query = attempt_query.with_for_update()
+    attempt = (await db.execute(attempt_query)).scalar_one_or_none()
+    if not attempt:
+        raise HTTPException(status_code=404, detail="Attempt not found")
+    if attempt.token_hash not in token_hashes:
+        raise HTTPException(status_code=403, detail="Invalid quiz token for this attempt")
+    if not attempt.candidate or attempt.candidate.user_id != user.id:
+        raise HTTPException(status_code=403, detail="This assessment link is not assigned to your account")
+    if attempt.status != QuizStatus.in_progress:
+        raise HTTPException(status_code=403, detail="Tab switch tracking requires an active quiz attempt")
+
+    await db.execute(
+        update(QuizAttempt)
+        .where(QuizAttempt.id == attempt.id)
+        .values(tab_switches=func.coalesce(QuizAttempt.tab_switches, 0) + 1)
+    )
+    await db.commit()
+    tab_switch_count = (await db.execute(
+        select(QuizAttempt.tab_switches).where(QuizAttempt.id == attempt.id)
+    )).scalar_one()
+    return {"attempt_id": attempt.id, "tab_switches": int(tab_switch_count or 0)}
+
+
 @router.post("/evaluate-code")
 @limiter.limit("10/minute")
 async def evaluate_code_endpoint(
     request: Request,
     body: CodeSubmitRequest,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_candidate),
 ):
-    res_pre = await db.execute(
+    _use_row_lock = not settings.DATABASE_URL.startswith("sqlite")
+    attempt_query = (
         select(QuizAttempt)
-        .options(selectinload(QuizAttempt.candidate))
+        .options(selectinload(QuizAttempt.candidate), selectinload(QuizAttempt.quiz))
         .where(QuizAttempt.id == body.attempt_id)
     )
-    attempt_pre = res_pre.scalar_one_or_none()
-    if not attempt_pre:
+    if _use_row_lock:
+        attempt_query = attempt_query.with_for_update()
+
+    attempt = (await db.execute(attempt_query)).scalar_one_or_none()
+    if not attempt:
         raise HTTPException(status_code=404, detail="Attempt not found")
-    if attempt_pre.status in (QuizStatus.submitted, QuizStatus.timed_out):
-        raise HTTPException(
-            status_code=400, detail="Cannot evaluate code on an already finalized quiz attempt")
-    if not attempt_pre.candidate or attempt_pre.candidate.user_id != user.id:
+    if not attempt.candidate or attempt.candidate.user_id != user.id:
         raise HTTPException(
             status_code=403, detail="You are not authorized to submit code for this attempt")
+    if attempt.status != QuizStatus.in_progress:
+        raise HTTPException(
+            status_code=403, detail="Code evaluation requires an active quiz attempt")
+    if not attempt.started_at:
+        raise HTTPException(status_code=403, detail="Quiz not started")
+
+    started_utc = (
+        attempt.started_at
+        if attempt.started_at.tzinfo is not None
+        else attempt.started_at.replace(tzinfo=timezone.utc)
+    )
+    elapsed_seconds = (datetime.now(timezone.utc) - started_utc).total_seconds()
+    duration_seconds = (attempt.quiz.duration_minutes if attempt.quiz else 0) * 60
+    if elapsed_seconds > duration_seconds + CODE_EVAL_GRACE_SECONDS:
+        raise HTTPException(
+            status_code=403, detail="Quiz time window has expired")
+    if int(attempt.code_eval_count or 0) >= MAX_CODE_EVALS:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Maximum code evaluations ({MAX_CODE_EVALS}) reached for this attempt",
+        )
 
     # BUG-18 FIX: Enforce a time limit on code evaluation to prevent
     # infinite loops or excessively slow LLM responses from hanging the request.
     try:
-        try:
-            harness_result = await asyncio.wait_for(
-                harness_agent_client.run_agent(
-                    "code_evaluator",
-                    {
-                        "problem_statement": body.problem,
-                        "user_code": body.code,
-                        "language": body.language,
-                    },
-                    request.headers.get("authorization"),
-                    timeout_s=70.0,
-                ),
-                timeout=75.0,
-            )
-            result = (
-                harness_result.get("code_eval_result")
-                if isinstance(harness_result, dict)
-                else None
-            )
-            if not isinstance(result, dict):
-                raise HarnessAgentError("code_evaluator", "invalid_result", str(harness_result))
-        except HarnessAgentError as exc:
-            logger.warning("Harness fallback code_evaluator: %s", exc)
-            result = await asyncio.wait_for(
-                _gemini.evaluate_code_submission(body.problem, body.code, body.language),
-                timeout=60.0,  # 60-second hard limit
-            )
+        result = await _run_code_eval_with_fallback(
+            request=request,
+            problem=body.problem,
+            code=body.code,
+            language=body.language,
+        )
     except asyncio.TimeoutError:
         raise HTTPException(status_code=408, detail="Code evaluation timed out (60s limit)")
-
-    attempt = attempt_pre
 
     current_answers = attempt.answers.copy() if attempt.answers else {}
     current_answers["coding_challenge"] = result
@@ -1284,6 +1797,7 @@ async def evaluate_code_endpoint(
         "pct": round(coding_score * 10, 2),
     }
     attempt.skill_breakdown = current_skills
+    attempt.code_eval_count = int(attempt.code_eval_count or 0) + 1
 
     # BUG #7 FIX (HIGH): Wrap commit in try/except with rollback. Previously,
     # a commit failure silently lost the coding score while the client received

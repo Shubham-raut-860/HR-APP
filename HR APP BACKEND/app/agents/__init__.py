@@ -15,6 +15,7 @@ from app.agents.graphs import (
 )
 from app.agents.registry import SERVICE_AGENT_MAP
 from app.agents.specialized import (
+    CareerAnalystAgent,
     CodeEvaluationAgent,
     CoverLetterAgent,
     DeduplicationAgent,
@@ -46,6 +47,7 @@ __all__ = [
     "ResumeBuilderAgent",
     "CoverLetterAgent",
     "NotificationAgent",
+    "CareerAnalystAgent",
     "SERVICE_AGENT_MAP",
     "build_candidate_tools_graph",
     "build_jd_generation_graph",

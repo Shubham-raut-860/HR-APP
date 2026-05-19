@@ -11,7 +11,7 @@ import {
   AlertDialogAction,
 } from "@/components/ui/alert-dialog";
 import { LogIn, ShieldAlert } from "lucide-react";
-import { clearSessionExpiredMark, isSessionExpiredMarked } from "@/services/tokenStore";
+import { clearSessionExpiredMark, isSessionExpiredMarked, setQuizToken } from "@/services/tokenStore";
 
 const LandingPage = lazy(() => import("@/pages/Landing"));
 const Login = lazy(() => import("@/pages/Login"));
@@ -25,6 +25,7 @@ const JobDetails = lazy(() => import("@/pages/JobDetails"));
 const Candidates = lazy(() => import("@/pages/Candidates"));
 const CandidateDetails = lazy(() => import("@/pages/CandidateDetails"));
 const Analytics = lazy(() => import("@/pages/Analytics"));
+const Inspector = lazy(() => import("@/pages/Inspector"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const CandidateDashboard = lazy(() => import("@/pages/CandidateDashboard"));
 const CandidateProgress = lazy(() => import("@/pages/CandidateProgress"));
@@ -132,9 +133,14 @@ function TakeQuizRoute() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    // SECURITY: token is stripped from URL immediately after read so it does not
+    // appear in browser history or referrer headers on subsequent navigation.
+    // Residual exposure: token appears in email body/mail provider logs (acceptable
+    // given HTTPS delivery). Token TTL is 7 days; rotation on resend is enforced
+    // server-side (quiz.py send_quiz_links).
     const token = new URLSearchParams(location.search).get('token');
     if (token) {
-      sessionStorage.setItem('quiz_token', token);
+      setQuizToken(token);
       window.history.replaceState({}, '', location.pathname);
     }
     setReady(true);
@@ -142,6 +148,40 @@ function TakeQuizRoute() {
 
   if (!ready) return <AuthLoader />;
   return <QuizMagicEntry />;
+}
+type RouteErrorBoundaryProps = { children: React.ReactNode };
+type RouteErrorBoundaryState = { hasError: boolean; message: string };
+
+class RouteErrorBoundary extends React.Component<RouteErrorBoundaryProps, RouteErrorBoundaryState> {
+  declare props: RouteErrorBoundaryProps;
+  state: RouteErrorBoundaryState = { hasError: false, message: "" };
+
+  static getDerivedStateFromError(error: unknown) {
+    const message = error instanceof Error ? error.message : "Unexpected route error";
+    return { hasError: true, message };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("Route rendering failed:", error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex h-screen flex-col items-center justify-center gap-3 text-center px-4">
+          <p className="text-lg font-semibold">Something went wrong while loading this page.</p>
+          <p className="text-sm text-muted-foreground max-w-md">{this.state.message}</p>
+          <button
+            className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+            onClick={() => window.location.reload()}
+          >
+            Reload
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 
@@ -190,7 +230,7 @@ function SessionExpiredModal() {
   };
 
   return (
-    <AlertDialog open={open}>
+    <AlertDialog open={open} onOpenChange={setOpen}>
       <AlertDialogContent className="max-w-sm rounded-2xl">
         <AlertDialogHeader>
           <div className="flex items-center gap-3 mb-1">
@@ -219,39 +259,42 @@ function SessionExpiredModal() {
 
 function AppRoutes() {
   return (
-    <Suspense fallback={<TopProgressBar />}>
-      <Routes>
-        {/* FIX F-14: Wrap / in PublicRoute so authenticated users redirect to their dashboard */}
-        <Route path="/" element={<PublicRoute><LandingPage /></PublicRoute>} />
-        <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-        <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
-        <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
-        <Route path="/reset-password/:token" element={<PublicRoute><ResetPassword /></PublicRoute>} />
-        <Route path="/take-quiz" element={<TakeQuizRoute />} />
-        <Route path="/quiz/:token" element={<LegacyQuizPathRedirect />} />
+    <RouteErrorBoundary>
+      <Suspense fallback={<TopProgressBar />}>
+        <Routes>
+          {/* FIX F-14: Wrap / in PublicRoute so authenticated users redirect to their dashboard */}
+          <Route path="/" element={<PublicRoute><LandingPage /></PublicRoute>} />
+          <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+          <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
+          <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
+          <Route path="/reset-password/:token" element={<PublicRoute><ResetPassword /></PublicRoute>} />
+          <Route path="/take-quiz" element={<TakeQuizRoute />} />
+          <Route path="/quiz/:token" element={<LegacyQuizPathRedirect />} />
 
-        <Route path="/dashboard" element={<ProtectedRoute allowedRoles={["hr", "admin"]}><DashboardLayout><Dashboard /></DashboardLayout></ProtectedRoute>} />
-        <Route path="/jobs" element={<ProtectedRoute allowedRoles={["hr", "admin"]}><DashboardLayout><Jobs /></DashboardLayout></ProtectedRoute>} />
-        <Route path="/jobs/:id" element={<ProtectedRoute allowedRoles={["hr", "admin"]}><DashboardLayout><JobDetails /></DashboardLayout></ProtectedRoute>} />
-        <Route path="/candidates" element={<ProtectedRoute allowedRoles={["hr", "admin"]}><DashboardLayout><Candidates /></DashboardLayout></ProtectedRoute>} />
-        <Route path="/candidates/:id" element={<ProtectedRoute allowedRoles={["hr", "admin"]}><DashboardLayout><CandidateDetails /></DashboardLayout></ProtectedRoute>} />
-        <Route path="/analytics" element={<ProtectedRoute allowedRoles={["hr", "admin"]}><DashboardLayout><Analytics /></DashboardLayout></ProtectedRoute>} />
-        <Route path="/settings" element={<ProtectedRoute allowedRoles={["hr", "admin"]}><DashboardLayout><Settings /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/dashboard" element={<ProtectedRoute allowedRoles={["hr", "admin"]}><DashboardLayout><Dashboard /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/jobs" element={<ProtectedRoute allowedRoles={["hr", "admin"]}><DashboardLayout><Jobs /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/jobs/:id" element={<ProtectedRoute allowedRoles={["hr", "admin"]}><DashboardLayout><JobDetails /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/candidates" element={<ProtectedRoute allowedRoles={["hr", "admin"]}><DashboardLayout><Candidates /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/candidates/:id" element={<ProtectedRoute allowedRoles={["hr", "admin"]}><DashboardLayout><CandidateDetails /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/analytics" element={<ProtectedRoute allowedRoles={["hr", "admin"]}><DashboardLayout><Analytics /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/inspector" element={<ProtectedRoute allowedRoles={["admin"]}><DashboardLayout><Inspector /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute allowedRoles={["hr", "admin"]}><DashboardLayout><Settings /></DashboardLayout></ProtectedRoute>} />
 
-        <Route path="/candidate/dashboard" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateDashboard /></CandidateLayout></ProtectedRoute>} />
-        <Route path="/candidate/progress" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateProgress /></CandidateLayout></ProtectedRoute>} />
-        <Route path="/candidate/jobs" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateJobBoard /></CandidateLayout></ProtectedRoute>} />
-        <Route path="/candidate/company/:id" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateCompanyPanel /></CandidateLayout></ProtectedRoute>} />
-        <Route path="/candidate/jobs/:id" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateJobDetail /></CandidateLayout></ProtectedRoute>} />
-        <Route path="/candidate/apply/:id" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateApply /></CandidateLayout></ProtectedRoute>} />
-        <Route path="/candidate/feedback/:id" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateFeedback /></CandidateLayout></ProtectedRoute>} />
-        <Route path="/candidate/mock-test" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateMockTest /></CandidateLayout></ProtectedRoute>} />
-        <Route path="/candidate/settings" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateSettings /></CandidateLayout></ProtectedRoute>} />
-        <Route path="/candidate/career-tools" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateCareerTools /></CandidateLayout></ProtectedRoute>} />
+          <Route path="/candidate/dashboard" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateDashboard /></CandidateLayout></ProtectedRoute>} />
+          <Route path="/candidate/progress" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateProgress /></CandidateLayout></ProtectedRoute>} />
+          <Route path="/candidate/jobs" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateJobBoard /></CandidateLayout></ProtectedRoute>} />
+          <Route path="/candidate/company/:id" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateCompanyPanel /></CandidateLayout></ProtectedRoute>} />
+          <Route path="/candidate/jobs/:id" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateJobDetail /></CandidateLayout></ProtectedRoute>} />
+          <Route path="/candidate/apply/:id" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateApply /></CandidateLayout></ProtectedRoute>} />
+          <Route path="/candidate/feedback/:id" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateFeedback /></CandidateLayout></ProtectedRoute>} />
+          <Route path="/candidate/mock-test" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateMockTest /></CandidateLayout></ProtectedRoute>} />
+          <Route path="/candidate/settings" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateSettings /></CandidateLayout></ProtectedRoute>} />
+          <Route path="/candidate/career-tools" element={<ProtectedRoute allowedRoles={["candidate"]}><CandidateLayout><CandidateCareerTools /></CandidateLayout></ProtectedRoute>} />
 
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
-    </Suspense>
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </Suspense>
+    </RouteErrorBoundary>
   );
 }
 
@@ -268,3 +311,5 @@ export default function App() {
     </ThemeProvider>
   );
 }
+
+

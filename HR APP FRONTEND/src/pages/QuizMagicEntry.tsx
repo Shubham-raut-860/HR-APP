@@ -5,22 +5,14 @@ import { claimQuizMagicLink, getQuizMagicLinkContext, type QuizMagicLinkContext 
 import QuizEngine from '@/pages/QuizEngine';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-
-const QUIZ_TOKEN_STORAGE_KEY = 'quiz_token';
-const QUIZ_RUNTIME_TOKEN_STORAGE_KEY = 'quiz_access_token';
-
-const normalizeToken = (raw: string | null | undefined): string | null => {
-  if (!raw || raw === 'null' || raw === 'undefined') return null;
-  return raw;
-};
+import { clearQuizToken, getQuizToken, setQuizRuntimeToken } from '@/services/tokenStore';
 
 export default function QuizMagicEntry() {
   const navigate = useNavigate();
   const { user, isAuthenticated, loading: authLoading, logout } = useAuth();
 
   const token = useMemo(() => {
-    const storedToken = normalizeToken(sessionStorage.getItem(QUIZ_TOKEN_STORAGE_KEY));
-    return storedToken;
+    return getQuizToken();
   }, []);
 
   const [ctxLoading, setCtxLoading] = useState(true);
@@ -35,7 +27,7 @@ export default function QuizMagicEntry() {
       setCtxLoading(false);
       return;
     }
-    sessionStorage.setItem(QUIZ_RUNTIME_TOKEN_STORAGE_KEY, token);
+    setQuizRuntimeToken(token);
   }, [token]);
 
   useEffect(() => {
@@ -90,8 +82,8 @@ export default function QuizMagicEntry() {
       try {
         await claimQuizMagicLink(token);
         if (!cancelled) {
-          sessionStorage.setItem(QUIZ_RUNTIME_TOKEN_STORAGE_KEY, token);
-          sessionStorage.removeItem(QUIZ_TOKEN_STORAGE_KEY);
+          setQuizRuntimeToken(token);
+          clearQuizToken();
           setClaimed(true);
         }
       } catch (err: any) {
@@ -109,9 +101,13 @@ export default function QuizMagicEntry() {
     return () => {
       cancelled = true;
     };
-  }, [token, authLoading, ctxLoading, ctxError, ctxData, isAuthenticated, user, claimed, claiming]);
+  }, [token, authLoading, ctxLoading, ctxError, ctxData, isAuthenticated, user, claimed]);
 
-  if (ctxLoading || authLoading || (isAuthenticated && user?.role === 'candidate' && (claiming || !claimed))) {
+  if (
+    ctxLoading ||
+    authLoading ||
+    (!ctxError && isAuthenticated && user?.role === 'candidate' && (claiming || !claimed))
+  ) {
     return (
       <div className="p-12 text-center text-lg animate-pulse text-muted-foreground">
         Preparing your secure assessment session...

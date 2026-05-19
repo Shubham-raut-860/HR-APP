@@ -359,22 +359,26 @@ export default function Analytics() {
                           </div>
                         ))}
                       </div>
-                      {((summary.avg_quiz_pct ?? summary.avg_quiz_score) != null || summary.avg_final_score != null) && (
-                        <div className="border-t pt-3 grid grid-cols-2 gap-3">
-                          {(summary.avg_quiz_pct ?? summary.avg_quiz_score) != null && (
-                            <div className="text-center p-3 rounded-xl bg-muted/30">
-                              <p className="text-xs text-muted-foreground mb-1">Avg Quiz Score</p>
-                              <p className={cn("text-xl font-bold tabular-nums", scoreColor(summary.avg_quiz_pct ?? summary.avg_quiz_score))}>{(summary.avg_quiz_pct ?? summary.avg_quiz_score).toFixed(1)}%</p>
-                            </div>
-                          )}
-                          {summary.avg_final_score != null && (
-                            <div className="text-center p-3 rounded-xl bg-muted/30">
-                              <p className="text-xs text-muted-foreground mb-1">Avg Final Score</p>
-                              <p className={cn("text-xl font-bold tabular-nums", scoreColor(summary.avg_final_score))}>{summary.avg_final_score.toFixed(1)}%</p>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      {(() => {
+                        const quizMetric = summary.avg_quiz_pct ?? summary.avg_quiz_score;
+                        const finalMetric = summary.avg_final_score;
+                        return (quizMetric != null || finalMetric != null) ? (
+                          <div className="border-t pt-3 grid grid-cols-2 gap-3">
+                            {quizMetric != null && (
+                              <div className="text-center p-3 rounded-xl bg-muted/30">
+                                <p className="text-xs text-muted-foreground mb-1">Avg Quiz Score</p>
+                                <p className={cn("text-xl font-bold tabular-nums", scoreColor(quizMetric))}>{quizMetric.toFixed(1)}%</p>
+                              </div>
+                            )}
+                            {finalMetric != null && (
+                              <div className="text-center p-3 rounded-xl bg-muted/30">
+                                <p className="text-xs text-muted-foreground mb-1">Avg Final Score</p>
+                                <p className={cn("text-xl font-bold tabular-nums", scoreColor(finalMetric))}>{finalMetric.toFixed(1)}%</p>
+                              </div>
+                            )}
+                          </div>
+                        ) : null;
+                      })()}
                     </>
                   ) : (
                     <div className="flex flex-col items-center justify-center h-[220px] text-muted-foreground">

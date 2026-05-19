@@ -24,6 +24,19 @@ _FILE_SALT = b"hr_platform_file_aesgcm_v1"
 _FILE_MAGIC = b"HRAPPA2\x00"
 _FILE_VERSION = 1
 _FILE_CHUNK_SIZE = 64 * 1024
+_LEGACY_FERNET_PREFIX = b"gAAAAA"
+_PLAINTEXT_MAGIC_PREFIXES: tuple[bytes, ...] = (
+    b"%PDF",
+    b"PK\x03\x04",
+    b"\xd0\xcf\x11\xe0",
+    b"\x89PNG\r\n\x1a\n",
+    b"\xff\xd8\xff",
+    b"GIF87a",
+    b"GIF89a",
+    b"BM",
+    b"II*\x00",
+    b"MM\x00*",
+)
 
 
 # FIX (Bug #1 - CRITICAL PERFORMANCE): _get_cipher() previously ran 390,000
@@ -115,6 +128,26 @@ def _get_file_keys() -> list[bytes]:
 
 def _is_chunked_file_ciphertext(content: bytes) -> bool:
     return len(content) > len(_FILE_MAGIC) and content.startswith(_FILE_MAGIC)
+
+
+def _is_legacy_fernet_ciphertext(content: bytes) -> bool:
+    return len(content) >= len(_LEGACY_FERNET_PREFIX) and content.startswith(_LEGACY_FERNET_PREFIX)
+
+
+def looks_like_internal_ciphertext(content: bytes) -> bool:
+    if len(content) < 32:
+        return False
+    return _is_chunked_file_ciphertext(content) or _is_legacy_fernet_ciphertext(content)
+
+
+def _looks_like_plaintext_document(content: bytes) -> bool:
+    if not content:
+        return False
+    if any(content.startswith(prefix) for prefix in _PLAINTEXT_MAGIC_PREFIXES):
+        return True
+    if len(content) >= 12 and content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+        return True
+    return False
 
 
 def _decrypt_chunked_file_content(content: bytes) -> bytes:
@@ -291,10 +324,16 @@ def decrypt_file(encrypted_content: bytes) -> bytes:
     try:
         if _is_chunked_file_ciphertext(encrypted_content):
             return _decrypt_chunked_file_content(encrypted_content)
+        if _is_legacy_fernet_ciphertext(encrypted_content):
+            return _get_cipher().decrypt(encrypted_content)
+        if _looks_like_plaintext_document(encrypted_content):
+            logger.warning(
+                "LEGACY plaintext file detected during decrypt; serving bytes as-is."
+            )
+            return encrypted_content
         return _get_cipher().decrypt(encrypted_content)
     except Exception as exc:
-        import logging
-        logging.getLogger(__name__).error(
+        logger.error(
             "decrypt_file failed - possible key mismatch or data corruption: %s", exc
         )
         raise DecryptionError(f"File decryption failed: {exc}") from exc
@@ -302,11 +341,17 @@ def decrypt_file(encrypted_content: bytes) -> bytes:
 
 def decrypt_file_from_path(source_path: str) -> bytes:
     with open(source_path, "rb") as fh:
-        header = fh.read(len(_FILE_MAGIC))
-        fh.seek(0)
-        if header == _FILE_MAGIC:
-            return _decrypt_chunked_file_stream(fh)
-        return decrypt_file(fh.read())
+        content = fh.read()
+    try:
+        return decrypt_file(content)
+    except DecryptionError:
+        if _looks_like_plaintext_document(content):
+            logger.warning(
+                "LEGACY plaintext resume served from path=%s without decryption",
+                source_path,
+            )
+            return content
+        raise
 
 
 def try_decrypt_file(encrypted_content: bytes) -> bytes | None:
@@ -315,6 +360,8 @@ def try_decrypt_file(encrypted_content: bytes) -> bytes | None:
     Use when probing whether bytes are encrypted-at-rest artifacts
     (e.g., accidental re-upload of files from uploads/resumes).
     """
+    if not looks_like_internal_ciphertext(encrypted_content):
+        return None
     try:
         if _is_chunked_file_ciphertext(encrypted_content):
             return _decrypt_chunked_file_content(encrypted_content)

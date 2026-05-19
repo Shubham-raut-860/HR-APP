@@ -110,7 +110,7 @@ class EvalHub:
         from app.evals.ragas_service import ragas_evaluator as _ragas
         self._deepeval = _deepeval
         self._ragas = _ragas
-        logger.info("✅ EvalHub ready (DeepEval + RAGAS + MLflow).")
+        logger.info("EvalHub ready (DeepEval + RAGAS + MLflow).")
 
     async def run(
         self,

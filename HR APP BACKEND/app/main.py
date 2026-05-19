@@ -1,142 +1,70 @@
-"""
-HR Analytics & Smart Hiring Platform – FastAPI Backend
+﻿"""
+HR Analytics & Smart Hiring Platform â€“ FastAPI Backend
 Azure OpenAI powered | Port: 8000
 """
+import time as _boot_time
+
+_BOOT_T0 = _boot_time.perf_counter()
+
+
+def _boot_mark(label: str, message: str) -> None:
+    elapsed_ms = (_boot_time.perf_counter() - _BOOT_T0) * 1000.0
+    epoch_ms = int(_boot_time.time() * 1000.0)
+    print(
+        f"[BOOT] {label} epoch_ms={epoch_ms} elapsed_ms={elapsed_ms:.3f} msg={message}",
+        flush=True,
+    )
+
+
+_boot_mark("T0", "process start")
+
 # BUG #10 FIX (HIGH): load_dotenv() MUST run before any local imports that call
 # os.getenv() at module level. Previously it was called AFTER all local imports,
 # meaning any module reading env vars at import-time got stale/None values.
 from dotenv import load_dotenv
 load_dotenv()
+_boot_mark("T1", "after load_dotenv")
+import os
+from app.logging_config import configure_logging
+configure_logging(os.getenv("APP_ENV", "development"))
+_boot_mark("T3", "after configure_logging")
 
-# ─── Standard library ─────────────────────────────────────────────────────────
+# â”€â”€â”€ Standard library â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 import logging
 import traceback
 import asyncio
 import uuid
-import os
 import sys
+import subprocess
 import time
-import fnmatch
-from contextlib import AsyncExitStack, asynccontextmanager
+from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import unquote, urlparse
-from typing import Any
+from urllib.parse import unquote
 
-# ─── Third-party ──────────────────────────────────────────────────────────────
-from fastapi import FastAPI, Request, status
+# â”€â”€â”€ Third-party â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
+import structlog
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.websockets import WebSocketDisconnect
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import inspect as sa_inspect
-from alembic import command as alembic_command
-from alembic.config import Config as AlembicConfig
+from sqlalchemy import inspect as sa_inspect, text
+from structlog.contextvars import bind_contextvars, clear_contextvars
 
-
-def _normalize_harness_env_raw(value: str | None) -> str:
-    env = (value or "").strip().lower()
-    if env in {"prod", "production"}:
-        return "prod"
-    if env in {"staging", "stage"}:
-        return "staging"
-    return "dev"
-
-
-def _normalize_azure_openai_base_url(endpoint: str | None) -> str:
-    """
-    Convert Azure endpoint to OpenAI-compatible v1 base URL expected by AsyncOpenAI.
-    Example:
-      https://my-resource.openai.azure.com -> https://my-resource.openai.azure.com/openai/v1/
-    """
-    raw = (endpoint or "").strip()
-    if not raw:
-        return ""
-    base = raw.rstrip("/")
-    if base.endswith("/openai/v1"):
-        return f"{base}/"
-    if base.endswith("/openai/v1/"):
-        return base
-    return f"{base}/openai/v1/"
-
-
-def _configure_harness_runtime_env_from_os() -> None:
-    """
-    Configure harness env before vendored harness imports/mounting.
-    This avoids stale vendor settings cache with wrong Redis values.
-    """
-    secret = (os.getenv("HARNESS_JWT_SECRET_KEY") or os.getenv("SECRET_KEY") or "").strip()
-    if secret:
-        os.environ["JWT_SECRET_KEY"] = secret
-
-    redis_url = (os.getenv("REDIS_URL") or "").strip()
-    if redis_url:
-        os.environ["REDIS_URL"] = redis_url
-        os.environ["redis_url"] = redis_url
-        try:
-            parsed = urlparse(redis_url)
-            if parsed.hostname:
-                os.environ["REDIS_HOST"] = parsed.hostname
-            if parsed.port:
-                os.environ["REDIS_PORT"] = str(parsed.port)
-        except Exception:
-            pass
-
-    if not os.getenv("ENVIRONMENT"):
-        raw_env = os.getenv("HARNESS_ENVIRONMENT") or os.getenv("APP_ENV") or "development"
-        os.environ["ENVIRONMENT"] = _normalize_harness_env_raw(raw_env)
-
-    # Azure OpenAI -> OpenAI-compatible env bridge for vendored HarnessAgent.
-    azure_key = (os.getenv("AZURE_OPENAI_API_KEY") or "").strip()
-    azure_endpoint = (os.getenv("AZURE_OPENAI_ENDPOINT") or "").strip()
-    azure_api_version = (os.getenv("AZURE_OPENAI_API_VERSION") or "").strip()
-    azure_deployment = (
-        os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
-        or os.getenv("AZURE_CHAT_DEPLOYMENT")
-        or os.getenv("AZURE_MINI_DEPLOYMENT")
-        or ""
-    ).strip()
-    azure_base_url = _normalize_azure_openai_base_url(azure_endpoint)
-
-    if azure_key:
-        os.environ.setdefault("OPENAI_API_KEY", azure_key)
-    if azure_base_url:
-        os.environ.setdefault("OPENAI_BASE_URL", azure_base_url)
-        os.environ.setdefault("OPENAI_API_BASE", azure_base_url)
-    if azure_api_version:
-        os.environ.setdefault("OPENAI_API_VERSION", azure_api_version)
-    if azure_deployment:
-        os.environ.setdefault("OPENAI_API_DEPLOYMENT", azure_deployment)
-        os.environ.setdefault("OPENAI_MODELS", azure_deployment)
-        os.environ.setdefault("DEFAULT_MODEL", azure_deployment)
-    if azure_key and azure_base_url:
-        os.environ.setdefault("OPENAI_API_TYPE", "azure")
-
-    # Harness defaults workspace_base_path to "/workspaces", which resolves to
-    # "\\workspaces" on Windows and is not writable in local dev.
-    if not os.getenv("WORKSPACE_BASE_PATH"):
-        configured_workspace = (
-            os.getenv("HARNESS_WORKSPACE_BASE_PATH")
-            or os.getenv("APP_WORKSPACE_BASE_PATH")
-            or str((Path(__file__).resolve().parents[1] / "harness_workspaces").resolve())
-        )
-        os.environ["WORKSPACE_BASE_PATH"] = configured_workspace
-
-
-# Apply early so vendor harness reads canonical env values.
-_configure_harness_runtime_env_from_os()
-
-# ─── Local application ────────────────────────────────────────────────────────
+# â”€â”€â”€ Local application â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 from app.config import settings
-from app.limiter import limiter
-from app.services.harness_auth_bridge import (
-    harness_get_current_tenant,
-    harness_get_current_user,
+_boot_mark("T4", "after settings loaded")
+from app.limiter import (
+    enforce_limiter_backend_or_503,
+    limiter,
+    limiter_backend_state,
+    validate_limiter_runtime_config,
 )
 from app.routers import (
     auth, jd, resumes, quiz,
@@ -144,164 +72,11 @@ from app.routers import (
     token_monitor,
 )
 from app.routers import settings_router
-from app.routers import evals as evals_router
+_boot_mark("T2", "after all imports complete")
 
-# ─── Logger ───────────────────────────────────────────────────────────────────
+# â”€â”€â”€ Logger â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 logger = logging.getLogger(__name__)
-_HARNESS_AVAILABLE = True
-_HARNESS_SUBAPP: FastAPI | None = None
-
-
-class _InMemoryRedisLike:
-    """
-    Minimal async Redis-like store for local/dev fallback when Redis is unavailable.
-    Supports only the subset used by harness run routes and runner lifecycle.
-    """
-
-    def __init__(self) -> None:
-        self._kv: dict[str, Any] = {}
-        self._hashes: dict[str, dict[str, str]] = {}
-        self._streams: dict[str, list[tuple[str, dict[str, str]]]] = {}
-        self._seq: int = 0
-        self._lock = asyncio.Lock()
-
-    async def ping(self) -> bool:
-        return True
-
-    async def aclose(self) -> None:
-        return None
-
-    async def set(self, key: str, value: Any) -> bool:
-        async with self._lock:
-            self._kv[str(key)] = value
-        return True
-
-    async def get(self, key: str) -> Any:
-        async with self._lock:
-            return self._kv.get(str(key))
-
-    async def delete(self, *keys: str) -> int:
-        removed = 0
-        async with self._lock:
-            for key in keys:
-                k = str(key)
-                if k in self._kv:
-                    del self._kv[k]
-                    removed += 1
-                if k in self._hashes:
-                    del self._hashes[k]
-                    removed += 1
-                if k in self._streams:
-                    del self._streams[k]
-                    removed += 1
-        return removed
-
-    async def hset(
-        self,
-        name: str,
-        key: str | None = None,
-        value: str | None = None,
-        mapping: dict[str, Any] | None = None,
-    ) -> int:
-        hname = str(name)
-        async with self._lock:
-            bucket = self._hashes.setdefault(hname, {})
-            added = 0
-            if mapping is not None:
-                for m_key, m_value in mapping.items():
-                    k = str(m_key)
-                    if k not in bucket:
-                        added += 1
-                    bucket[k] = str(m_value)
-                return added
-            if key is not None:
-                k = str(key)
-                if k not in bucket:
-                    added += 1
-                bucket[k] = "" if value is None else str(value)
-            return added
-
-    async def hgetall(self, name: str) -> dict[str, str]:
-        async with self._lock:
-            return dict(self._hashes.get(str(name), {}))
-
-    async def scan_iter(self, match: str | None = None, count: int = 100):
-        async with self._lock:
-            keys = list(self._kv.keys()) + list(self._hashes.keys()) + list(self._streams.keys())
-            seen: set[str] = set()
-            ordered: list[str] = []
-            for key in keys:
-                if key in seen:
-                    continue
-                seen.add(key)
-                ordered.append(key)
-        pattern = match or "*"
-        for key in ordered:
-            if fnmatch.fnmatch(key, pattern):
-                yield key
-
-    @staticmethod
-    def _stream_id_tuple(raw_id: str | bytes) -> tuple[int, int]:
-        if isinstance(raw_id, bytes):
-            raw_id = raw_id.decode("utf-8", errors="ignore")
-        sid = str(raw_id or "0-0")
-        if sid == "$":
-            return (2**63 - 1, 2**63 - 1)
-        if "-" not in sid:
-            try:
-                return (int(sid), 0)
-            except Exception:
-                return (0, 0)
-        left, right = sid.split("-", 1)
-        try:
-            return (int(left), int(right))
-        except Exception:
-            return (0, 0)
-
-    async def xadd(
-        self,
-        name: str,
-        fields: dict[str, Any],
-        id: str = "*",
-        maxlen: int | None = None,
-        approximate: bool = True,
-    ) -> str:
-        async with self._lock:
-            self._seq += 1
-            stream_id = id if id != "*" else f"{int(time.time() * 1000)}-{self._seq}"
-            normalized = {str(k): str(v) for k, v in (fields or {}).items()}
-            bucket = self._streams.setdefault(str(name), [])
-            bucket.append((stream_id, normalized))
-            if maxlen is not None and maxlen > 0 and len(bucket) > maxlen:
-                self._streams[str(name)] = bucket[-maxlen:]
-            return stream_id
-
-    async def xread(
-        self,
-        streams: dict[str, str],
-        count: int | None = None,
-        block: int | None = None,
-    ) -> list[tuple[str, list[tuple[str, dict[str, str]]]]]:
-        async with self._lock:
-            output: list[tuple[str, list[tuple[str, dict[str, str]]]]] = []
-            for stream_name, last_id in (streams or {}).items():
-                entries = self._streams.get(str(stream_name), [])
-                last_tuple = self._stream_id_tuple(last_id)
-                messages = [
-                    (entry_id, dict(fields))
-                    for entry_id, fields in entries
-                    if self._stream_id_tuple(entry_id) > last_tuple
-                ]
-                if count is not None and count > 0:
-                    messages = messages[:count]
-                if messages:
-                    output.append((str(stream_name), messages))
-            if output:
-                return output
-
-        if block:
-            await asyncio.sleep(max(0.0, float(block) / 1000.0))
-        return []
+_FIRST_HEALTH_MARKED = False
 
 
 def _env_flag_true(name: str, default: bool = False) -> bool:
@@ -311,76 +86,131 @@ def _env_flag_true(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _current_app_env() -> str:
-    return (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or settings.APP_ENV or "development").strip().lower()
+def _configure_harness_env_defaults() -> None:
+    """
+    Configure env vars expected by the vendored HarnessAgent runtime.
+    This must run before importing harness modules.
+    """
+    redis_url = (settings.REDIS_URL or os.getenv("REDIS_URL") or "redis://127.0.0.1:6379/0").strip()
+    if redis_url:
+        os.environ.setdefault("REDIS_URL", redis_url)
+        os.environ.setdefault("redis_url", redis_url)
 
-
-def _normalize_harness_env(value: str | None) -> str:
-    env = (value or "").strip().lower()
-    if env in {"prod", "production"}:
-        return "prod"
-    if env in {"staging", "stage"}:
-        return "staging"
-    return "dev"
-
-
-def _configure_harness_runtime_env() -> None:
     harness_secret = (settings.HARNESS_JWT_SECRET_KEY or settings.SECRET_KEY or "").strip()
     if harness_secret:
-        os.environ["JWT_SECRET_KEY"] = harness_secret
+        os.environ.setdefault("JWT_SECRET_KEY", harness_secret)
+        os.environ.setdefault("HARNESS_JWT_SECRET_KEY", harness_secret)
+        os.environ.setdefault("jwt_secret_key", harness_secret)
 
-    if settings.REDIS_URL:
-        os.environ["REDIS_URL"] = settings.REDIS_URL
-        os.environ["redis_url"] = settings.REDIS_URL
+    env_name = (settings.HARNESS_ENVIRONMENT or "dev").strip()
+    if env_name:
+        os.environ.setdefault("ENVIRONMENT", env_name)
+        os.environ.setdefault("environment", env_name)
+
+    # Optional OpenAI compatibility for harness internals.
+    # Set both generic OpenAI and Azure-specific keys so vendored HarnessAgent
+    # can resolve whichever provider wiring is enabled.
+    if (settings.AZURE_OPENAI_API_KEY or "").strip():
+        api_key = settings.AZURE_OPENAI_API_KEY.strip()
+        os.environ.setdefault("OPENAI_API_KEY", api_key)
+        os.environ.setdefault("AZURE_OPENAI_API_KEY", api_key)
+
+    if (settings.AZURE_OPENAI_ENDPOINT or "").strip():
+        endpoint = settings.AZURE_OPENAI_ENDPOINT.strip().rstrip("/")
+        os.environ.setdefault("OPENAI_BASE_URL", f"{endpoint}/openai/v1/")
+        os.environ.setdefault("AZURE_OPENAI_ENDPOINT", endpoint)
+
+    if (settings.AZURE_OPENAI_API_VERSION or "").strip():
+        os.environ.setdefault("AZURE_OPENAI_API_VERSION", settings.AZURE_OPENAI_API_VERSION.strip())
+
+    if (settings.AZURE_CHAT_DEPLOYMENT or "").strip():
+        deployment = settings.AZURE_CHAT_DEPLOYMENT.strip()
+        os.environ.setdefault("OPENAI_MODELS", deployment)
+        os.environ.setdefault("AZURE_OPENAI_DEPLOYMENT", deployment)
+
+
+def _add_vendored_harness_to_syspath() -> Path:
+    vendor_src = Path(__file__).resolve().parents[1] / "vendor" / "HarnessAgent-main" / "src"
+    if vendor_src.exists():
+        vendor_src_str = str(vendor_src)
+        if vendor_src_str not in sys.path:
+            sys.path.insert(0, vendor_src_str)
+    return vendor_src
+
+
+def _mount_original_harness_app(app: FastAPI) -> None:
+    if not settings.HARNESS_MOUNT_ENABLED:
+        logger.info("Harness mount disabled by config (HARNESS_MOUNT_ENABLED=false).")
+        return
+
+    try:
+        vendor_src = _add_vendored_harness_to_syspath()
+        if not vendor_src.exists():
+            raise RuntimeError(f"Vendored HarnessAgent path missing: {vendor_src}")
+
+        # Override harness auth deps before app/router creation.
+        from app.services.harness_auth_bridge import (
+            harness_get_current_tenant,
+            harness_get_current_user,
+        )
+        from harness.api import deps as harness_deps
+
+        from app.agents.harness_plugins import HR_AGENT_TYPES
+        from harness.api.routes import runs as harness_runs
+        from harness.api.main import create_app as create_harness_app
+
+        allowed_agent_types = getattr(harness_runs, "_ALLOWED_AGENT_TYPES", None)
+        if isinstance(allowed_agent_types, set):
+            allowed_agent_types.update(HR_AGENT_TYPES)
+        else:
+            logger.warning(
+                "Harness runs allow-list was not mutable; HR agent types were not injected"
+            )
+
+        # Optional: register plugin classes for worker mode compatibility.
         try:
-            parsed = urlparse(settings.REDIS_URL)
-            if parsed.hostname:
-                os.environ["REDIS_HOST"] = parsed.hostname
-            if parsed.port:
-                os.environ["REDIS_PORT"] = str(parsed.port)
-        except Exception:
-            pass
+            from app.agents.harness_plugins import _HR_AGENT_FACTORY  # type: ignore[attr-defined]
+            from harness.workers.agent_worker import register_agent
 
-    if not os.getenv("ENVIRONMENT"):
-        os.environ["ENVIRONMENT"] = _normalize_harness_env(
-            settings.HARNESS_ENVIRONMENT or settings.APP_ENV
+            for agent_type, cls in _HR_AGENT_FACTORY.items():
+                register_agent(agent_type, cls)
+        except Exception as reg_exc:
+            logger.debug("Harness worker plugin registration skipped: %s", reg_exc)
+
+        harness_app = create_harness_app()
+        harness_app.dependency_overrides[harness_deps.get_current_tenant] = harness_get_current_tenant
+        harness_app.dependency_overrides[harness_deps.get_current_user] = harness_get_current_user
+        app.mount("/harness", harness_app)
+        logger.info(
+            "Mounted Pradip HarnessAgent at /harness with %d HR agent types",
+            len(HR_AGENT_TYPES),
         )
-
-    # Azure OpenAI -> OpenAI-compatible env bridge for vendored HarnessAgent.
-    azure_key = (settings.AZURE_OPENAI_API_KEY or "").strip()
-    azure_endpoint = (settings.AZURE_OPENAI_ENDPOINT or "").strip()
-    azure_api_version = (settings.AZURE_OPENAI_API_VERSION or "").strip()
-    azure_deployment = (
-        str(getattr(settings, "AZURE_OPENAI_DEPLOYMENT_NAME", "") or "").strip()
-        or str(getattr(settings, "AZURE_CHAT_DEPLOYMENT", "") or "").strip()
-        or str(getattr(settings, "AZURE_MINI_DEPLOYMENT", "") or "").strip()
-    )
-    azure_base_url = _normalize_azure_openai_base_url(azure_endpoint)
-
-    if azure_key:
-        os.environ.setdefault("OPENAI_API_KEY", azure_key)
-    if azure_base_url:
-        os.environ.setdefault("OPENAI_BASE_URL", azure_base_url)
-        os.environ.setdefault("OPENAI_API_BASE", azure_base_url)
-    if azure_api_version:
-        os.environ.setdefault("OPENAI_API_VERSION", azure_api_version)
-    if azure_deployment:
-        os.environ.setdefault("OPENAI_API_DEPLOYMENT", azure_deployment)
-        os.environ.setdefault("OPENAI_MODELS", azure_deployment)
-        os.environ.setdefault("DEFAULT_MODEL", azure_deployment)
-    if azure_key and azure_base_url:
-        os.environ.setdefault("OPENAI_API_TYPE", "azure")
-
-    if not os.getenv("WORKSPACE_BASE_PATH"):
-        os.environ["WORKSPACE_BASE_PATH"] = str(
-            (Path(__file__).resolve().parents[1] / "harness_workspaces").resolve()
-        )
+    except Exception as exc:
+        if settings.is_production:
+            raise RuntimeError(f"Harness mount failed in production: {exc}") from exc
+        logger.warning("Harness mount unavailable in %s mode: %s", settings.APP_ENV, exc)
 
 
 def _run_startup_migrations() -> None:
     project_root = Path(__file__).resolve().parents[1]
-    alembic_cfg = AlembicConfig(str(project_root / "alembic.ini"))
-    alembic_command.upgrade(alembic_cfg, "head")
+    # Production deployments should run migrations as a pre-deploy step.
+    # Startup migration fallback remains best-effort for non-production/local.
+    alembic_env = os.environ.copy()
+    alembic_env.setdefault("PGCONNECT_TIMEOUT", "5")
+    cmd = [sys.executable, "-m", "alembic", "upgrade", "head"]
+    completed = subprocess.run(
+        cmd,
+        cwd=str(project_root),
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env=alembic_env,
+    )
+    if completed.returncode != 0:
+        details = (completed.stderr or completed.stdout or "").strip()
+        raise RuntimeError(
+            f"Alembic startup migration failed with exit code {completed.returncode}. {details}"
+        )
 
 
 def _resolve_runtime_sqlite_path(database_url: str) -> Path | None:
@@ -448,224 +278,347 @@ async def _run_startup_schema_guard() -> None:
         logger.info("Runtime SQLite database path: %s", runtime_sqlite_path)
         _warn_on_duplicate_local_sqlite_dbs(runtime_sqlite_path)
 
-    if _env_flag_true("SKIP_STARTUP_MIGRATIONS", default=False):
+    _boot_mark("T5", "after Alembic migration check starts")
+    skip_migrations_default = settings.is_production
+    if settings.is_production and os.getenv("SKIP_STARTUP_MIGRATIONS") is None:
+        logger.warning(
+            "APP_ENV=production defaulting SKIP_STARTUP_MIGRATIONS=true. "
+            "Run migrations separately as a pre-deploy job."
+        )
+
+    if _env_flag_true("SKIP_STARTUP_MIGRATIONS", default=skip_migrations_default):
         logger.warning("SKIP_STARTUP_MIGRATIONS=true - skipping automatic Alembic upgrade.")
     else:
         logger.info("Applying Alembic migrations to head at startup.")
-        await asyncio.to_thread(_run_startup_migrations)
+        try:
+            await asyncio.wait_for(asyncio.to_thread(_run_startup_migrations), timeout=8.0)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Startup Alembic migration exceeded 8s timeout; continuing startup. "
+                "Run migrations as a separate pre-deploy job."
+            )
+        except Exception as mig_exc:
+            logger.warning(
+                "Startup Alembic migration failed non-fatal: %s. "
+                "Run migrations as a separate pre-deploy job.",
+                mig_exc,
+            )
+    _boot_mark("T6", "after Alembic migration check completes")
 
     await _assert_candidate_quiz_columns_present()
 
 
-def _mount_original_harness_app(app: FastAPI) -> bool:
-    """
-    Mount the original HarnessAgent API from the vendored upstream source.
-    """
-    if not settings.HARNESS_MOUNT_ENABLED:
-        logger.warning("HARNESS_MOUNT_ENABLED=false; /harness routes are disabled.")
-        return False
+async def _run_startup_database_health_checks() -> None:
+    from app.database import _check_schema_drift, engine, verify_pgvector_registration
 
-    project_root = Path(__file__).resolve().parents[1]
-    harness_src = project_root / "vendor" / "HarnessAgent-main" / "src"
-    if not harness_src.exists():
-        logger.warning("Original HarnessAgent source not found at %s", harness_src)
-        return False
+    async def _check_pgvector() -> None:
+        try:
+            # PostgreSQL must have pgvector driver registration + extension availability.
+            await asyncio.wait_for(verify_pgvector_registration(engine), timeout=5.0)
+        except asyncio.TimeoutError:
+            logger.warning("pgvector_registration_check_timed_out non_fatal=true")
+        except Exception as exc:
+            logger.warning("pgvector_registration_check_failed non_fatal=true error=%s", exc)
+        finally:
+            _boot_mark("T8", "after pgvector registration check")
 
-    src_str = str(harness_src)
-    if src_str not in sys.path:
-        sys.path.insert(0, src_str)
+    async def _check_drift() -> None:
+        try:
+            await asyncio.wait_for(_check_schema_drift(engine), timeout=5.0)
+        except asyncio.TimeoutError:
+            logger.warning("schema_drift_check_timed_out non_fatal=true")
+        except Exception as drift_err:
+            logger.warning("schema_drift_check_failed non_fatal=true error=%s", drift_err)
+        finally:
+            _boot_mark("T9", "after schema drift check")
 
+    await asyncio.gather(_check_pgvector(), _check_drift())
+
+
+async def _run_mlflow_startup_init() -> None:
+    # MLflow self-configures from env vars via mlflow_service.py.
+    mlflow_env_uri = (os.environ.get("MLFLOW_TRACKING_URI") or "").strip()
+    if mlflow_env_uri:
+        try:
+            # Hard timeout around the entire thread invocation.
+            _mlflow_available = await asyncio.wait_for(
+                asyncio.to_thread(
+                    lambda: __import__("app.services.mlflow_service", fromlist=["_init_mlflow"])._init_mlflow()
+                ),
+                timeout=5.0,
+            )
+        except Exception as _e:
+            logger.debug("Failed to initialize MLflow service: %s", _e)
+            _mlflow_available = False
+        if not _mlflow_available:
+            logger.warning(
+                "MLflow tracking server not reachable - set MLFLOW_TRACKING_URI in .env "
+                "or start: mlflow server --host 127.0.0.1 --port 5000"
+            )
+    else:
+        logger.info("MLflow init skipped: MLFLOW_TRACKING_URI is not explicitly set in environment.")
+    _boot_mark("T10", "after MLflow init attempt")
+
+
+async def _warm_database_pool_fast_path() -> None:
     try:
-        global _HARNESS_SUBAPP
-        _configure_harness_runtime_env()
-        from harness.api import deps as harness_deps
-        from harness.api.routes import runs as _harness_runs
-        from harness.core.config import get_config as harness_get_config
-        from harness.api.main import create_app as create_harness_app
-        _hr_agent_types: set[str] = {
-            "resume_parser",
-            "resume_scorer",
-            "jd_generator",
-            "jd_parser",
-            "quiz_generator",
-            "code_evaluator",
-            "candidate_ranker",
-            "resume_enhancer",
-            "resume_builder",
-            "cover_letter",
-            "embedding",
-            "notification",
-            "deduplication",
-            "career_analyst",
-        }
-        _harness_runs._ALLOWED_AGENT_TYPES.update(_hr_agent_types)
-        logger.info(
-            "Expanded /harness/runs allowed agent types with %d HR types",
-            len(_hr_agent_types),
-        )
-        harness_get_config.cache_clear()
-        harness_app = create_harness_app()
-        _HARNESS_SUBAPP = harness_app
-        harness_app.dependency_overrides[harness_deps.get_current_tenant] = harness_get_current_tenant
-        harness_app.dependency_overrides[harness_deps.get_current_user] = harness_get_current_user
-        app.mount("/harness", harness_app)
-        logger.info("Mounted original HarnessAgent API at /harness")
-        return True
-    except Exception:
-        logger.exception("Failed to mount original HarnessAgent API")
-        return False
+        from app.database import engine
+
+        async def _ping_once() -> None:
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+
+        await asyncio.wait_for(_ping_once(), timeout=2.0)
+    except Exception as exc:
+        logger.warning("startup_db_pool_warmup_non_fatal=true error=%s", exc)
 
 
-def _mount_unavailable_harness_stub(app: FastAPI) -> None:
-    """
-    Provide a safe /harness stub when upstream dependencies are unavailable.
-    """
-    stub = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-
-    @stub.get("/")
-    async def harness_unavailable_root() -> JSONResponse:
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"detail": "Original HarnessAgent is unavailable on this deployment."},
-        )
-
-    @stub.get("/health")
-    async def harness_unavailable_health() -> JSONResponse:
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"status": "unavailable"},
-        )
-
-    app.mount("/harness", stub)
-
-
-# ─── Lifespan ─────────────────────────────────────────────────────────────────
-
-
-async def _start_harness_subapp_lifespan(exit_stack: AsyncExitStack) -> None:
-    """
-    Mounted sub-app lifespans are not always started automatically.
-    Explicitly enter harness lifespan so Redis/agent state is initialized.
-    """
-    harness_app = _HARNESS_SUBAPP
-    if harness_app is None:
+def _mount_optional_eval_router(app: FastAPI) -> None:
+    if not settings.EVALS_ENABLED:
+        logger.info("Evals router disabled by config (EVALS_ENABLED=false).")
         return
+    try:
+        from app.routers import evals as evals_router
+        app.include_router(evals_router.router)
+    except Exception as exc:
+        logger.warning("Evals router mount skipped non_fatal=true error=%s", exc)
 
-    if getattr(harness_app.state, "redis", None) is not None:
+
+def _mount_optional_metaflow_router(app: FastAPI) -> None:
+    if not settings.ENABLE_METAFLOW:
         return
-
-    await exit_stack.enter_async_context(harness_app.router.lifespan_context(harness_app))
-    if getattr(harness_app.state, "redis", None) is None:
-        harness_app.state.redis = _InMemoryRedisLike()
+    try:
+        from app.routers import flows_router as _flows_router
+        app.include_router(_flows_router.router)
+        logger.info("Metaflow batch scoring endpoint registered (/admin/flows/batch-score)")
+    except ImportError as _e:
         logger.warning(
-            "Harness sub-app Redis unavailable; using in-memory Redis fallback for local runtime."
+            "ENABLE_METAFLOW=True but Metaflow is not installed: %s. "
+            "Run: pip install metaflow>=2.12", _e,
         )
-    logger.info("Harness sub-app lifespan started by parent app lifecycle.")
+
+
+async def _run_post_startup_init(app: FastAPI) -> None:
+    try:
+        await _run_startup_schema_guard()
+        _boot_mark("T7", "after DB schema guard completes")
+        await _run_startup_database_health_checks()
+
+        try:
+            recovered_jobs = await resumes.recover_stale_bulk_upload_jobs()
+            if recovered_jobs:
+                logger.warning("Recovered %d stale async bulk upload jobs at startup.", recovered_jobs)
+        except Exception as recover_exc:
+            logger.warning("bulk_job_recovery_failed non_fatal=true error=%s", recover_exc)
+        _boot_mark("T11", "after bulk job recovery")
+
+        await _run_mlflow_startup_init()
+
+        try:
+            _mount_original_harness_app(app)
+        except Exception as mount_exc:
+            logger.warning("harness_mount_background_failed non_fatal=true error=%s", mount_exc)
+
+        _mount_optional_eval_router(app)
+        _mount_optional_metaflow_router(app)
+    except Exception as exc:
+        app.state.startup_error = str(exc)
+        logger.exception("background_startup_init_failed non_fatal=true error=%s", exc)
+    finally:
+        app.state.startup_complete = True
+        app.state.startup_completed_at = time.time()
+        structlog.get_logger(__name__).info(
+            "startup_complete",
+            app_env=settings.APP_ENV,
+            version=app.version,
+            host=settings.APP_HOST,
+            port=settings.APP_PORT,
+            docs_enabled=not settings.is_production,
+            workers="gunicorn" if settings.is_production else "uvicorn-dev",
+        )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with AsyncExitStack() as exit_stack:
-        # BUG #2 FIX (CRITICAL): Validate ENCRYPTION_KEY at startup, not at first
-        # file-upload time. Without this, dev/staging with missing ENCRYPTION_KEY
-        # starts fine but crashes with an unhandled RuntimeError on every upload.
-        if not settings.ENCRYPTION_KEY or len(settings.ENCRYPTION_KEY) < 32:
-            logger.error(
-                "⚠️  ENCRYPTION_KEY is missing or too short (< 32 chars). "
-                "File uploads and resume downloads WILL FAIL. "
-                "Set ENCRYPTION_KEY in your .env file."
+    # BUG #2 FIX (CRITICAL): Validate ENCRYPTION_KEY at startup, not at first
+    # file-upload time. Without this, dev/staging with missing ENCRYPTION_KEY
+    # starts fine but crashes with an unhandled RuntimeError on every upload.
+    if not settings.ENCRYPTION_KEY or len(settings.ENCRYPTION_KEY) < 32:
+        logger.error(
+            "ENCRYPTION_KEY is missing or too short (< 32 chars). "
+            "File uploads and resume downloads WILL FAIL. "
+            "Set ENCRYPTION_KEY in your .env file."
+        )
+        if settings.is_production:
+            raise RuntimeError(
+                "ENCRYPTION_KEY must be at least 32 characters in production. "
+                "Set it in your .env file."
             )
-            if settings.APP_ENV == "production":
-                raise RuntimeError(
-                    "ENCRYPTION_KEY must be at least 32 characters in production. "
-                    "Set it in your .env file."
-                )
 
-        # Ensure mounted HarnessAgent lifespan runs so request.app.state.redis exists.
-        await _start_harness_subapp_lifespan(exit_stack)
+    # BUG-02 FIX: enforce supported embedding dimensions at startup.
+    assert settings.EMBEDDING_DIM in (1536, 3072), (
+        f"Unsupported EMBEDDING_DIM={settings.EMBEDDING_DIM}. Expected 1536 or 3072."
+    )
 
-        # Always apply pending migrations on startup and enforce required schema.
-        await _run_startup_schema_guard()
+    # Validate proxy trust configuration for safe limiter client IP derivation.
+    validate_limiter_runtime_config()
 
-        # ── MLflow self-configures from env vars via mlflow_service.py ──────────────
-        # MLFLOW_TRACKING_URI and MLFLOW_EXPERIMENT_NAME are read at module import.
-        # mlflow_service._init_mlflow() runs automatically and logs the result.
-        # FIX: import in a thread to prevent blocking the event loop if the MLflow
-        # server is unreachable (socket timeout can be ~30s by default).
-        mlflow_env_uri = (os.environ.get("MLFLOW_TRACKING_URI") or "").strip()
-        if mlflow_env_uri:
-            try:
-                # Wrap in wait_for to prevent hang if MLflow tracking is unreachable
-                _mlflow_available = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        lambda: __import__("app.services.mlflow_service", fromlist=["_init_mlflow"])._init_mlflow()
-                    ),
-                    timeout=5.0
-                )
-            except Exception as _e:
-                logger.debug("Failed to initialize MLflow service: %s", _e)
-                _mlflow_available = False
-            if not _mlflow_available:
-                logger.warning(
-                    "⚠️  MLflow tracking server not reachable — set MLFLOW_TRACKING_URI in .env "
-                    "or start: mlflow server --host 127.0.0.1 --port 5000"
-                )
-        else:
-            logger.info("MLflow init skipped: MLFLOW_TRACKING_URI is not explicitly set in environment.")
+    # Fast path startup: bring app online quickly.
+    app.state.startup_complete = False
+    app.state.startup_started_at = time.time()
+    app.state.startup_task = None
+    app.state.startup_error = None
 
+    await _warm_database_pool_fast_path()
+    app.state.startup_task = asyncio.create_task(_run_post_startup_init(app))
+
+    try:
+        yield
+    finally:
+        startup_task = getattr(app.state, "startup_task", None)
+        if startup_task is not None:
+            await asyncio.gather(startup_task, return_exceptions=True)
+
+        if resumes._background_tasks:
+            await asyncio.gather(*list(resumes._background_tasks), return_exceptions=True)
         try:
-            yield
-        finally:
-            if resumes._background_tasks:
-                await asyncio.gather(*list(resumes._background_tasks), return_exceptions=True)
-            try:
+            if settings.ENABLE_METAFLOW:
                 from app.routers import flows_router as _flows_router
                 if getattr(_flows_router, "_flow_background_tasks", None):
                     await asyncio.gather(*list(_flows_router._flow_background_tasks), return_exceptions=True)
-            except Exception:
-                pass
-    # MLflow runs flush automatically when the context manager exits.
+        except Exception as _shutdown_exc:
+            logger.warning(
+                "Flow background task cleanup error during shutdown: %s",
+                _shutdown_exc,
+                exc_info=True,
+            )
 
 
-# ─── App Factory ──────────────────────────────────────────────────────────────
+# â”€â”€â”€ App Factory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+_configure_harness_env_defaults()
 
 app = FastAPI(
     title="HR Analytics & Smart Hiring Platform",
     description="AI-Powered HR Platform API",
     version="2.0.0",
     # Disable interactive docs in production to limit attack surface
-    docs_url="/docs" if settings.APP_ENV != "production" else None,
-    redoc_url="/redoc" if settings.APP_ENV != "production" else None,
+    docs_url="/docs" if not settings.is_production else None,
+    redoc_url="/redoc" if not settings.is_production else None,
     lifespan=lifespan,
 )
 
 
-# ─── Rate limiting ─────────────────────────────────────────────────────────────
+# â”€â”€â”€ Rate limiting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        bind_contextvars(request_id=request_id)
+        request.state.request_id = request_id
+        try:
+            response = await call_next(request)
+        finally:
+            clear_contextvars()
+        response.headers["X-Request-ID"] = request_id
+        return response
+
+
+class RequestMetricsMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        started = time.perf_counter()
+        status_code = 500
+        try:
+            response = await call_next(request)
+            status_code = int(response.status_code)
+            return response
+        except Exception:
+            status_code = 500
+            raise
+        finally:
+            elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+            logger.info(
+                "request_complete method=%s path=%s status=%s duration_ms=%s request_id=%s",
+                request.method,
+                request.url.path,
+                status_code,
+                elapsed_ms,
+                getattr(request.state, "request_id", "-"),
+            )
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:; connect-src 'self'"
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "connect-src 'self'; "
+            "font-src 'self'; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "frame-ancestors 'none';"
         )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if settings.is_production:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
 
 
+class LimiterBackendGuardMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Keep health endpoints reachable for diagnostics even when limiter backend is degraded.
+        if request.url.path in {"/health", "/"}:
+            return await call_next(request)
+        try:
+            enforce_limiter_backend_or_503(request)
+        except HTTPException as exc:
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail},
+                headers=exc.headers or {},
+            )
+        return await call_next(request)
+
+
+app.add_middleware(RequestIDMiddleware)
+app.add_middleware(RequestMetricsMiddleware)
+app.add_middleware(LimiterBackendGuardMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
-# ─── CORS ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€ CORS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "X-Quiz-Token", "X-Session-Id"],
+    # In development we allow all request headers to avoid browser preflight
+    # stalls from ad-hoc/custom headers added by tooling/extensions/frontends.
+    # Production retains explicit allow-listing.
+    allow_headers=(
+        ["*"]
+        if not settings.is_production
+        else [
+            "Authorization",
+            "Content-Type",
+            "Accept",
+            "X-Quiz-Token",
+            "X-Session-Id",
+            "X-Skip-Auth-Refresh",
+            "X-Client-Request-Id",
+        ]
+    ),
     expose_headers=["Content-Disposition", "X-Session-Id"],
 )
 
-# ─── MLflow Session Middleware — tags each request with session_id for Sessions tab ───
+# â”€â”€â”€ MLflow Session Middleware â€” tags each request with session_id for Sessions tab â”€â”€â”€
 
 
 # Paths that should skip MLflow session tagging (health checks, docs, preflight).
@@ -676,7 +629,7 @@ class MLflowSessionMiddleware(BaseHTTPMiddleware):
     """Tags every incoming HTTP request with a unique session_id in MLflow."""
 
     async def dispatch(self, request: Request, call_next):
-        # Skip non-API paths and OPTIONS preflights — they have no MLflow trace.
+        # Skip non-API paths and OPTIONS preflights â€” they have no MLflow trace.
         if request.url.path in _MLFLOW_SKIP_PATHS or request.method == "OPTIONS":
             return await call_next(request)
 
@@ -685,8 +638,8 @@ class MLflowSessionMiddleware(BaseHTTPMiddleware):
         try:
             from app.services.mlflow_service import tag_trace_with_session
             tag_trace_with_session(session_id)
-        except Exception:
-            pass
+        except Exception as _mlflow_exc:
+            logger.debug("MLflow session tag skipped: %s", _mlflow_exc)
         response = await call_next(request)
         response.headers["X-Session-Id"] = session_id
         return response
@@ -695,7 +648,7 @@ class MLflowSessionMiddleware(BaseHTTPMiddleware):
 app.add_middleware(MLflowSessionMiddleware)
 
 
-# ─── Exception Handlers ───────────────────────────────────────────────────────────
+# â”€â”€â”€ Exception Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request: Request, exc: RequestValidationError):
@@ -707,7 +660,14 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 
 @app.exception_handler(SQLAlchemyError)
 async def sqlalchemy_error_handler(request: Request, exc: SQLAlchemyError):
-    logger.exception("Database error on %s %s", request.method, request.url.path)
+    statement = getattr(exc, "statement", None)
+    statement_preview = (str(statement)[:500] + "...") if statement and len(str(statement)) > 500 else statement
+    logger.exception(
+        "Database error on %s %s statement=%s",
+        request.method,
+        request.url.path,
+        statement_preview,
+    )
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "A database error occurred. Please try again later."},
@@ -739,7 +699,7 @@ async def generic_error_handler(request: Request, exc: Exception):
     if origin in settings.cors_origins_list or "*" in settings.cors_origins_list:
         headers["Access-Control-Allow-Origin"] = origin
     
-    if settings.APP_ENV == "development":
+    if (settings.APP_ENV or "").strip().lower() == "development":
         # SECURITY: never expose raw exception strings/tracebacks to clients.
         # Keep full details in server logs only.
         return JSONResponse(
@@ -755,7 +715,7 @@ async def generic_error_handler(request: Request, exc: Exception):
     )
 
 
-# ─── Routers ──────────────────────────────────────────────────────────────────
+# â”€â”€â”€ Routers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.include_router(auth.router)
 app.include_router(jd.router)
@@ -766,39 +726,26 @@ app.include_router(admin.router)
 app.include_router(candidate_portal.router)
 app.include_router(notifications.router)
 app.include_router(agent.router)
-_harness_mounted = _mount_original_harness_app(app)
-if not _harness_mounted:
-    if _current_app_env() == "production":
-        raise RuntimeError("Critical dependency 'harness' failed to mount in production. Aborting.")
-    logger.error("Harness mount failed — stub endpoints active. NOT safe for production.")
-    _mount_unavailable_harness_stub(app)
-_HARNESS_AVAILABLE = _harness_mounted
 app.include_router(settings_router.router)
-app.include_router(evals_router.router)
 app.include_router(token_monitor.router)
 
-# ─── Optional: Metaflow batch scoring (dev-only, behind feature flag) ─────────
-# The import and router are loaded ONLY when ENABLE_METAFLOW=True so that
-# the metaflow package is never imported in normal production deployments.
-# Set ENABLE_METAFLOW=True in .env to activate POST /admin/flows/batch-score.
-if settings.ENABLE_METAFLOW:
-    try:
-        from app.routers import flows_router as _flows_router
-        app.include_router(_flows_router.router)
-        logger.info("✅ Metaflow batch scoring endpoint registered (/admin/flows/batch-score)")
-    except ImportError as _e:
-        logger.warning(
-            "ENABLE_METAFLOW=True but Metaflow is not installed: %s. "
-            "Run: pip install metaflow>=2.12", _e,
-        )
 
 
-
-# ─── Health Check ─────────────────────────────────────────────────────────────
+# â”€â”€â”€ Health Check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def _check_backend_redis_health() -> dict:
+    limiter_state = limiter_backend_state()
+    impact = (
+        "rate limiting uses in-memory fallback; harness Redis queuing disabled/fallback to in-process runtime"
+    )
     if not settings.REDIS_URL:
-        return {"configured": False, "reachable": None}
+        return {
+            "configured": False,
+            "reachable": False,
+            "warning": True,
+            "impact": impact,
+            "limiter_backend_degraded": bool(limiter_state.get("backend_degraded")),
+        }
 
     try:
         import redis.asyncio as aioredis  # type: ignore
@@ -811,35 +758,142 @@ async def _check_backend_redis_health() -> dict:
         )
         try:
             await client.ping()
-            return {"configured": True, "reachable": True}
+            return {
+                "configured": True,
+                "reachable": True,
+                "warning": False,
+                "impact": "none",
+                "limiter_backend_degraded": bool(limiter_state.get("backend_degraded")),
+            }
         finally:
             await client.aclose()
     except Exception:
-        return {"configured": True, "reachable": False}
+        return {
+            "configured": True,
+            "reachable": False,
+            "warning": True,
+            "impact": impact,
+            "limiter_backend_degraded": bool(limiter_state.get("backend_degraded")),
+        }
+
+
+async def _check_harness_health() -> dict:
+    if not settings.HARNESS_MOUNT_ENABLED:
+        return {"enabled": False, "mounted": False, "status": "disabled"}
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"http://127.0.0.1:{settings.APP_PORT}/harness/health")
+        return {
+            "enabled": True,
+            "mounted": resp.status_code == 200,
+            "status": "healthy" if resp.status_code == 200 else f"http_{resp.status_code}",
+        }
+    except Exception as exc:
+        return {
+            "enabled": True,
+            "mounted": False,
+            "status": "unreachable",
+            "detail": str(exc),
+        }
+
+
+async def _check_database_health() -> dict:
+    try:
+        from app.database import engine
+
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return {"reachable": True}
+    except Exception as exc:
+        return {"reachable": False, "detail": str(exc)}
+
+
+def _check_ai_health() -> dict:
+    try:
+        from app.services import gemini_service
+
+        return gemini_service.ai_runtime_status()
+    except Exception as exc:
+        return {"configured": False, "available": False, "detail": str(exc)}
 
 
 @app.get("/health", tags=["Health"])
 async def health_check():
+    global _FIRST_HEALTH_MARKED
+    startup_complete = bool(getattr(app.state, "startup_complete", False))
+    if not startup_complete:
+        limiter_state = limiter_backend_state()
+        payload = {
+            "status": "starting",
+            "version": app.version,
+            "startup_complete": False,
+            "redis": {
+                "configured": bool(settings.REDIS_URL),
+                "reachable": False,
+                "warning": True,
+                "impact": (
+                    "rate limiting uses in-memory fallback; harness Redis queuing disabled/"
+                    "fallback to in-process runtime"
+                ),
+                "limiter_backend_degraded": bool(limiter_state.get("backend_degraded")),
+            },
+        }
+        if not _FIRST_HEALTH_MARKED:
+            _boot_mark("T12", "first health endpoint response")
+            _FIRST_HEALTH_MARKED = True
+        return payload
+
+    db_status = await _check_database_health()
     redis_status = await _check_backend_redis_health()
-    return {
-        "status": "healthy",
-        # VERSION FIX: reference app.version so this never drifts from the FastAPI
-        # definition above — one source of truth for the version string.
+    harness_status = await _check_harness_health()
+    ai_status = _check_ai_health()
+    agents_status: dict[str, dict] = {}
+    orchestration_observability: dict = {"status": "unavailable"}
+    try:
+        from app.services.multi_agent_runtime import hr_multi_agent_runtime
+
+        agents_status = await hr_multi_agent_runtime.health_all()
+    except Exception:
+        agents_status = {"runtime": {"status": "unavailable"}}
+    try:
+        from app.services.harness_agent_client import get_runtime_observability_snapshot
+
+        orchestration_observability = get_runtime_observability_snapshot()
+    except Exception as obs_exc:
+        orchestration_observability = {"status": "unavailable", "detail": str(obs_exc)}
+
+    overall_status = "healthy"
+    if not db_status.get("reachable", False):
+        overall_status = "degraded"
+    elif not ai_status.get("available", False):
+        overall_status = "degraded"
+
+    payload = {
+        "status": overall_status,
         "version": app.version,
-        "harness": "available" if _HARNESS_AVAILABLE else "unavailable",
+        "startup_complete": True,
+        "database": db_status,
         "redis": redis_status,
-        # SECURITY: environment name omitted — it's an internal infrastructure detail
-        # that has no value to legitimate callers and leaks deployment layout to attackers.
+        "ai": ai_status,
+        "harness": harness_status,
+        "multi_agent": agents_status,
+        "agent_orchestration": orchestration_observability,
     }
+    if not _FIRST_HEALTH_MARKED:
+        _boot_mark("T12", "first health endpoint response")
+        _FIRST_HEALTH_MARKED = True
+    return payload
 
 
 @app.get("/", tags=["Root"])
 async def root():
     # CORRECTNESS FIX: docs URL is conditionally None in production (lines 40-41
-    # above). Unconditionally returning "/docs" here was misleading — callers would
+    # above). Unconditionally returning "/docs" here was misleading â€” callers would
     # follow the link and hit a 404. Now we only advertise the docs path when it
     # is actually active.
-    docs_path = "/docs" if settings.APP_ENV != "production" else None
+    docs_path = "/docs" if not settings.is_production else None
     response = {
         "message": "HR Analytics & Smart Hiring Platform API",
         "health": "/health",
@@ -847,3 +901,6 @@ async def root():
     if docs_path:
         response["docs"] = docs_path
     return response
+
+
+

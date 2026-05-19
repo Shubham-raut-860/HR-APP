@@ -1,5 +1,8 @@
 const TOKEN_KEY = "token";
 const SESSION_EXPIRED_KEY = "session_expired";
+const REFRESH_TOKEN_KEY = "refresh_token";
+const QUIZ_TOKEN_KEY = "quiz_token";
+const QUIZ_RUNTIME_TOKEN_KEY = "quiz_access_token";
 
 let accessTokenMemory: string | null = null;
 
@@ -84,4 +87,54 @@ export const isSessionExpiredMarked = (): boolean => {
 export const clearSessionExpiredMark = (): void => {
   if (!isBrowser()) return;
   window.sessionStorage.removeItem(SESSION_EXPIRED_KEY);
+};
+
+export const getRefreshToken = (): string | null => {
+  if (!isBrowser()) return null;
+  return normalizeToken(window.sessionStorage.getItem(REFRESH_TOKEN_KEY));
+};
+
+export const setRefreshToken = (token: string | null | undefined): void => {
+  if (!isBrowser()) return;
+  const normalized = normalizeToken(token ?? null);
+  if (normalized) {
+    window.sessionStorage.setItem(REFRESH_TOKEN_KEY, normalized);
+  } else {
+    window.sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+  }
+};
+
+export const getQuizToken = (): string | null => {
+  if (!isBrowser()) return null;
+  return normalizeToken(window.sessionStorage.getItem(QUIZ_TOKEN_KEY));
+};
+
+export const setQuizToken = (token: string | null | undefined): void => {
+  if (!isBrowser()) return;
+  const normalized = normalizeToken(token ?? null);
+  if (normalized) {
+    window.sessionStorage.setItem(QUIZ_TOKEN_KEY, normalized);
+  } else {
+    window.sessionStorage.removeItem(QUIZ_TOKEN_KEY);
+  }
+};
+
+export const clearQuizToken = (): void => {
+  if (!isBrowser()) return;
+  window.sessionStorage.removeItem(QUIZ_TOKEN_KEY);
+};
+
+export const getQuizRuntimeToken = (): string | null => {
+  if (!isBrowser()) return null;
+  return normalizeToken(window.sessionStorage.getItem(QUIZ_RUNTIME_TOKEN_KEY));
+};
+
+export const setQuizRuntimeToken = (token: string | null | undefined): void => {
+  if (!isBrowser()) return;
+  const normalized = normalizeToken(token ?? null);
+  if (normalized) {
+    window.sessionStorage.setItem(QUIZ_RUNTIME_TOKEN_KEY, normalized);
+  } else {
+    window.sessionStorage.removeItem(QUIZ_RUNTIME_TOKEN_KEY);
+  }
 };

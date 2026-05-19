@@ -9,6 +9,7 @@ import {
   Briefcase,
   Users,
   BarChart,
+  ShieldCheck,
   Settings,
   LogOut,
   Moon,
@@ -21,7 +22,7 @@ import { getUntaggedMetrics } from "@/services/analytics";
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -31,22 +32,56 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [untaggedCount, setUntaggedCount] = useState(0);
 
   useEffect(() => {
-    const controller = new AbortController();
-    const load = async () => {
+    let stopped = false;
+    let inFlight = false;
+    let timerId: number | undefined;
+    let activeController: AbortController | null = null;
+
+    const scheduleNext = (ms: number) => {
+      if (stopped) return;
+      timerId = window.setTimeout(runPoll, ms);
+    };
+
+    const runPoll = async () => {
+      if (stopped || inFlight || document.visibilityState === "hidden") {
+        scheduleNext(60_000);
+        return;
+      }
+
+      inFlight = true;
+      activeController?.abort();
+      activeController = new AbortController();
+      let hardTimeoutId: number | undefined;
+
       try {
-        const data = await getUntaggedMetrics(controller.signal);
+        // Hard-stop sidebar polling calls even if a stale bundle or overridden
+        // axios defaults cause long request timeouts in development.
+        hardTimeoutId = window.setTimeout(() => {
+          activeController?.abort();
+        }, 8_000);
+
+        const data = await getUntaggedMetrics(activeController.signal);
         setUntaggedCount(data.untagged_count || 0);
       } catch (err: any) {
         const isCancelled = err?.name === "AbortError" || err?.code === "ERR_CANCELED";
         const isTransientNetwork = err?.code === "ERR_NETWORK" || err?.message === "Network Error";
-        if (!isCancelled && !isTransientNetwork) {
+        const isTimeout = err?.code === "ECONNABORTED" || String(err?.message || "").toLowerCase().includes("timeout");
+        if (!isCancelled && !isTransientNetwork && !isTimeout) {
           console.error("Polling error:", err);
         }
+      } finally {
+        if (hardTimeoutId !== undefined) window.clearTimeout(hardTimeoutId);
+        inFlight = false;
+        scheduleNext(60_000);
       }
     };
-    load();
-    const id = setInterval(load, 60_000);
-    return () => { controller.abort(); clearInterval(id); };
+
+    runPoll();
+    return () => {
+      stopped = true;
+      if (timerId !== undefined) window.clearTimeout(timerId);
+      activeController?.abort();
+    };
   }, []);
 
   const toggleSidebar = () => {
@@ -64,6 +99,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     { label: "Analytics", path: "/analytics",   icon: BarChart        },
     { label: "Settings",  path: "/settings",    icon: Settings        },
   ];
+  if (user?.role === "admin") {
+    navItems.splice(4, 0, { label: "Inspector", path: "/inspector", icon: ShieldCheck });
+  }
 
   return (
     <div className="flex h-screen bg-background overflow-hidden selection:bg-primary/10">
@@ -174,8 +212,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
           <div className="flex items-center gap-2 md:gap-4 pl-4">
             <NotificationBell className="rounded-full" />
-            <Button variant="ghost" size="icon" className="rounded-full text-muted-foreground" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-              {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full text-muted-foreground transition-transform duration-150 hover:scale-105"
+              onClick={toggleTheme}
+              aria-label={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}
+            >
+              {resolvedTheme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
 
             <div className="flex items-center gap-3 border-l border-border/50 pl-2 md:pl-4 ml-2">

@@ -31,9 +31,7 @@ FIX LOG (this session):
          using body.target_role directly from the Pydantic model.
 """
 from app.config import settings
-from app.services import gemini_service, file_service, scoring_service, encryption_service, resume_fallback_parser
-from app.services import harness_agent_client
-from app.services.harness_agent_client import HarnessAgentError
+from app.constants.versions import PARSER_VERSION
 from app.services.notification_service import push_to_candidate_by_email
 from app.services.auth_service import require_candidate, require_hr, log_action
 from app.schemas import (
@@ -47,8 +45,8 @@ from app.models import (
     StoredResume,
 )
 from app.database import get_db
-from sqlalchemy.orm import selectinload
-from sqlalchemy import select
+from sqlalchemy.orm import selectinload, load_only
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -63,20 +61,57 @@ import hashlib
 import json as _json
 import logging
 import secrets
+from importlib import import_module
 
 logger = logging.getLogger(__name__)
 
 
+class _LazyModule:
+    def __init__(self, module_path: str):
+        self._module_path = module_path
+        self._module = None
+
+    def _load(self):
+        if self._module is None:
+            self._module = import_module(self._module_path)
+        return self._module
+
+    def __getattr__(self, item):
+        return getattr(self._load(), item)
+
+
+gemini_service = _LazyModule("app.services.gemini_service")
+file_service = _LazyModule("app.services.file_service")
+scoring_service = _LazyModule("app.services.scoring_service")
+encryption_service = _LazyModule("app.services.encryption_service")
+resume_fallback_parser = _LazyModule("app.services.resume_fallback_parser")
+harness_agent_client = _LazyModule("app.services.harness_agent_client")
+
+
 router = APIRouter(prefix="/candidate", tags=["Candidate Portal"])
+_CANDIDATE_APPLY_TIMEOUT_S = 30.0
+_CANDIDATE_PRECHECK_TIMEOUT_S = 30.0
+_CANDIDATE_AI_CALL_TIMEOUT_S = 25.0
+_CANDIDATE_AI_ROUTE_TIMEOUT_S = 30.0
+
+
+def _is_harness_or_timeout_error(exc: Exception) -> bool:
+    return isinstance(exc, asyncio.TimeoutError) or exc.__class__.__name__ == "HarnessAgentError"
+
+
+def _new_quiz_token_pair() -> tuple[str, str]:
+    raw_token = secrets.token_urlsafe(32)
+    return raw_token, QuizAttempt.hash_access_token(raw_token)
+
+
+def _issue_attempt_token(attempt: QuizAttempt, *, ttl_days: int = 7) -> str:
+    raw_token, token_hash = _new_quiz_token_pair()
+    attempt.token_hash = token_hash
+    attempt.token_expires_at = datetime.now(timezone.utc) + timedelta(days=ttl_days)
+    return raw_token
 
 
 # ─── Private helper ───────────────────────────────────────────────────────────
-
-def _auth_header(request: Request | None) -> str | None:
-    if request is None:
-        return None
-    return request.headers.get("authorization")
-
 
 async def _run_quiz_generation(
     *,
@@ -88,29 +123,40 @@ async def _run_quiz_generation(
     hard: int,
 ) -> list[dict]:
     try:
-        harness_result = await harness_agent_client.run_agent(
-            "quiz_generator",
-            {
-                "jd_text": jd_text,
-                "skills": skills,
-                "easy": easy,
-                "medium": medium,
-                "hard": hard,
-            },
-            _auth_header(request),
+        auth_header = request.headers.get("authorization") if request else None
+        result = await asyncio.wait_for(
+            harness_agent_client.run_agent(
+                "quiz_generator",
+                {
+                    "jd_text": jd_text,
+                    "skills": skills,
+                    "easy": easy,
+                    "medium": medium,
+                    "hard": hard,
+                },
+                auth_header,
+                timeout_s=_CANDIDATE_AI_CALL_TIMEOUT_S,
+            ),
+            timeout=_CANDIDATE_AI_CALL_TIMEOUT_S,
         )
-        questions = harness_result.get("questions") if isinstance(harness_result, dict) else None
-        if isinstance(questions, list):
-            return questions
-        raise HarnessAgentError("quiz_generator", "invalid_result", str(harness_result))
-    except HarnessAgentError as exc:
-        logger.warning("Harness fallback quiz_generator: %s", exc)
-        return await gemini_service.generate_quiz_questions(
-            jd_text=jd_text,
-            skills=skills,
-            easy=easy,
-            medium=medium,
-            hard=hard,
+        if isinstance(result, dict):
+            questions = result.get("questions")
+            if isinstance(questions, list):
+                return questions
+        return result if isinstance(result, list) else []
+    except Exception as runtime_exc:
+        if not _is_harness_or_timeout_error(runtime_exc):
+            raise
+        logger.warning("Harness fallback quiz_generator failed, using direct generator: %s", runtime_exc)
+        return await asyncio.wait_for(
+            gemini_service.generate_quiz_questions(
+                jd_text=jd_text,
+                skills=skills,
+                easy=easy,
+                medium=medium,
+                hard=hard,
+            ),
+            timeout=_CANDIDATE_AI_CALL_TIMEOUT_S,
         )
 
 
@@ -120,18 +166,27 @@ async def _run_parse_resume(
     resume_text: str,
 ) -> dict:
     try:
-        harness_result = await harness_agent_client.run_agent(
-            "resume_parser",
-            {"doc_text": resume_text},
-            _auth_header(request),
+        auth_header = request.headers.get("authorization") if request else None
+        result = await asyncio.wait_for(
+            harness_agent_client.run_agent(
+                "resume_parser",
+                {"text": resume_text},
+                auth_header,
+                timeout_s=_CANDIDATE_AI_CALL_TIMEOUT_S,
+            ),
+            timeout=_CANDIDATE_AI_CALL_TIMEOUT_S,
         )
-        parsed = harness_result.get("parsed_resume") if isinstance(harness_result, dict) else None
-        if isinstance(parsed, dict):
-            return parsed
-        raise HarnessAgentError("resume_parser", "invalid_result", str(harness_result))
-    except HarnessAgentError as exc:
-        logger.warning("Harness fallback resume_parser: %s", exc)
-        return await gemini_service.parse_resume(resume_text)
+        if isinstance(result, dict) and isinstance(result.get("parsed_resume"), dict):
+            return result["parsed_resume"]
+        return result if isinstance(result, dict) else {}
+    except Exception as runtime_exc:
+        if not _is_harness_or_timeout_error(runtime_exc):
+            raise
+        logger.warning("Harness fallback resume_parser failed, using direct parser: %s", runtime_exc)
+        return await asyncio.wait_for(
+            gemini_service.parse_resume(resume_text),
+            timeout=_CANDIDATE_AI_CALL_TIMEOUT_S,
+        )
 
 
 async def _run_get_embedding(
@@ -140,18 +195,29 @@ async def _run_get_embedding(
     text: str,
 ) -> list:
     try:
-        harness_result = await harness_agent_client.run_agent(
-            "embedding",
-            {"text": text},
-            _auth_header(request),
+        auth_header = request.headers.get("authorization") if request else None
+        result = await asyncio.wait_for(
+            harness_agent_client.run_agent(
+                "embedding",
+                {"text": text},
+                auth_header,
+                timeout_s=_CANDIDATE_AI_CALL_TIMEOUT_S,
+            ),
+            timeout=_CANDIDATE_AI_CALL_TIMEOUT_S,
         )
-        embedding = harness_result.get("embedding") if isinstance(harness_result, dict) else None
-        if isinstance(embedding, list):
-            return embedding
-        raise HarnessAgentError("embedding", "invalid_result", str(harness_result))
-    except HarnessAgentError as exc:
-        logger.warning("Harness fallback embedding: %s", exc)
-        return await gemini_service.get_embedding(text)
+        if isinstance(result, dict):
+            embedding = result.get("embedding")
+            if isinstance(embedding, list):
+                return embedding
+        return result if isinstance(result, list) else []
+    except Exception as runtime_exc:
+        if not _is_harness_or_timeout_error(runtime_exc):
+            raise
+        logger.warning("Harness fallback embedding failed, using direct embedding: %s", runtime_exc)
+        return await asyncio.wait_for(
+            gemini_service.get_embedding(text),
+            timeout=_CANDIDATE_AI_CALL_TIMEOUT_S,
+        )
 
 
 async def _run_resume_scorer(
@@ -166,35 +232,42 @@ async def _run_resume_scorer(
     description: str,
 ) -> dict:
     try:
-        harness_result = await harness_agent_client.run_agent(
-            "resume_scorer",
-            {
-                "parsed_resume": parsed_resume,
-                "job_title": job_title,
-                "experience_min": exp_min,
-                "experience_max": exp_max,
-                "must_have_skills": must_have,
-                "good_to_have_skills": good_to_have,
-                "job_description": description,
-            },
-            _auth_header(request),
+        auth_header = request.headers.get("authorization") if request else None
+        result = await asyncio.wait_for(
+            harness_agent_client.run_agent(
+                "resume_scorer",
+                {
+                    "parsed_resume": parsed_resume,
+                    "job_title": job_title,
+                    "exp_min": exp_min,
+                    "exp_max": exp_max,
+                    "must_have": must_have,
+                    "good_to_have": good_to_have,
+                    "description": description,
+                },
+                auth_header,
+                timeout_s=_CANDIDATE_AI_CALL_TIMEOUT_S,
+            ),
+            timeout=_CANDIDATE_AI_CALL_TIMEOUT_S,
         )
-        score = harness_result.get("score_result") if isinstance(harness_result, dict) else None
-        if isinstance(score, dict):
-            return score
-        if isinstance(harness_result, dict) and "resume_score" in harness_result:
-            return harness_result
-        raise HarnessAgentError("resume_scorer", "invalid_result", str(harness_result))
-    except HarnessAgentError as exc:
-        logger.warning("Harness fallback resume_scorer: %s", exc)
-        return await gemini_service.score_resume_against_jd(
-            parsed_resume=parsed_resume,
-            job_title=job_title,
-            exp_min=exp_min,
-            exp_max=exp_max,
-            must_have=must_have,
-            good_to_have=good_to_have,
-            description=description,
+        if isinstance(result, dict) and isinstance(result.get("score_result"), dict):
+            return result["score_result"]
+        return result if isinstance(result, dict) else {}
+    except Exception as runtime_exc:
+        if not _is_harness_or_timeout_error(runtime_exc):
+            raise
+        logger.warning("Harness fallback resume_scorer failed, using direct scorer: %s", runtime_exc)
+        return await asyncio.wait_for(
+            gemini_service.score_resume_against_jd(
+                parsed_resume=parsed_resume,
+                job_title=job_title,
+                exp_min=exp_min,
+                exp_max=exp_max,
+                must_have=must_have,
+                good_to_have=good_to_have,
+                description=description,
+            ),
+            timeout=_CANDIDATE_AI_CALL_TIMEOUT_S,
         )
 
 
@@ -210,35 +283,41 @@ async def _run_enhance_resume(
     missing_skills: list[str],
 ) -> dict:
     try:
-        harness_result = await harness_agent_client.run_agent(
-            "resume_enhancer",
-            {
-                "resume_text": resume_text,
-                "job_title": job_title,
-                "must_have_skills": must_have,
-                "good_to_have_skills": good_to_have,
-                "job_description": job_description,
-                "current_score": current_score,
-                "missing_skills": missing_skills,
-            },
-            _auth_header(request),
+        auth_header = request.headers.get("authorization") if request else None
+        result = await asyncio.wait_for(
+            harness_agent_client.run_agent(
+                "resume_enhancer",
+                {
+                    "resume_text": resume_text,
+                    "job_title": job_title,
+                    "must_have": must_have,
+                    "good_to_have": good_to_have,
+                    "description": job_description,
+                    "parsed_resume": {},
+                },
+                auth_header,
+                timeout_s=_CANDIDATE_AI_CALL_TIMEOUT_S,
+            ),
+            timeout=_CANDIDATE_AI_CALL_TIMEOUT_S,
         )
-        result = harness_result.get("result") if isinstance(harness_result, dict) else None
-        if isinstance(result, dict):
-            return result
-        if isinstance(harness_result, dict):
-            return harness_result
-        raise HarnessAgentError("resume_enhancer", "invalid_result", str(harness_result))
-    except HarnessAgentError as exc:
-        logger.warning("Harness fallback resume_enhancer: %s", exc)
-        return await gemini_service.enhance_resume(
-            resume_text=resume_text,
-            job_title=job_title,
-            must_have=must_have,
-            good_to_have=good_to_have,
-            job_description=job_description,
-            current_score=current_score,
-            missing_skills=missing_skills,
+        if isinstance(result, dict) and isinstance(result.get("enhancement_result"), dict):
+            return result["enhancement_result"]
+        return result if isinstance(result, dict) else {}
+    except Exception as runtime_exc:
+        if not _is_harness_or_timeout_error(runtime_exc):
+            raise
+        logger.warning("Harness fallback resume_enhancer failed, using direct enhancer: %s", runtime_exc)
+        return await asyncio.wait_for(
+            gemini_service.enhance_resume(
+                resume_text=resume_text,
+                job_title=job_title,
+                must_have=must_have,
+                good_to_have=good_to_have,
+                job_description=job_description,
+                current_score=current_score,
+                missing_skills=missing_skills,
+            ),
+            timeout=_CANDIDATE_AI_CALL_TIMEOUT_S,
         )
 
 
@@ -249,25 +328,32 @@ async def _run_build_resume(
     target_role: str,
 ) -> dict:
     try:
-        harness_result = await harness_agent_client.run_agent(
-            "resume_builder",
-            {
-                "candidate_data": candidate_data,
-                "target_role": target_role,
-            },
-            _auth_header(request),
+        auth_header = request.headers.get("authorization") if request else None
+        result = await asyncio.wait_for(
+            harness_agent_client.run_agent(
+                "resume_builder",
+                {
+                    "candidate_data": candidate_data,
+                    "target_role": target_role,
+                },
+                auth_header,
+                timeout_s=_CANDIDATE_AI_CALL_TIMEOUT_S,
+            ),
+            timeout=_CANDIDATE_AI_CALL_TIMEOUT_S,
         )
-        result = harness_result.get("result") if isinstance(harness_result, dict) else None
-        if isinstance(result, dict):
-            return result
-        if isinstance(harness_result, dict):
-            return harness_result
-        raise HarnessAgentError("resume_builder", "invalid_result", str(harness_result))
-    except HarnessAgentError as exc:
-        logger.warning("Harness fallback resume_builder: %s", exc)
-        return await gemini_service.build_resume_from_form(
-            candidate_data=candidate_data,
-            target_role=target_role,
+        if isinstance(result, dict) and isinstance(result.get("built_resume"), dict):
+            return result["built_resume"]
+        return result if isinstance(result, dict) else {}
+    except Exception as runtime_exc:
+        if not _is_harness_or_timeout_error(runtime_exc):
+            raise
+        logger.warning("Harness fallback resume_builder failed, using direct builder: %s", runtime_exc)
+        return await asyncio.wait_for(
+            gemini_service.build_resume_from_form(
+                candidate_data=candidate_data,
+                target_role=target_role,
+            ),
+            timeout=_CANDIDATE_AI_CALL_TIMEOUT_S,
         )
 
 
@@ -285,39 +371,46 @@ async def _run_cover_letter(
     job_description: str,
 ) -> dict:
     try:
-        harness_result = await harness_agent_client.run_agent(
-            "cover_letter",
-            {
-                "candidate_name": candidate_name,
-                "exp_years": exp_years,
-                "skills": skills,
-                "work_history": work_history,
-                "education": education,
-                "company_name": company_name,
-                "job_title": job_title,
-                "must_have_skills": must_have,
-                "job_description": job_description,
-            },
-            _auth_header(request),
+        auth_header = request.headers.get("authorization") if request else None
+        result = await asyncio.wait_for(
+            harness_agent_client.run_agent(
+                "cover_letter",
+                {
+                    "candidate_name": candidate_name,
+                    "exp_years": exp_years,
+                    "skills": skills,
+                    "work_history": work_history,
+                    "education": education,
+                    "company_name": company_name,
+                    "job_title": job_title,
+                    "must_have": must_have,
+                    "description": job_description,
+                },
+                auth_header,
+                timeout_s=_CANDIDATE_AI_CALL_TIMEOUT_S,
+            ),
+            timeout=_CANDIDATE_AI_CALL_TIMEOUT_S,
         )
-        result = harness_result.get("result") if isinstance(harness_result, dict) else None
-        if isinstance(result, dict):
-            return result
-        if isinstance(harness_result, dict):
-            return harness_result
-        raise HarnessAgentError("cover_letter", "invalid_result", str(harness_result))
-    except HarnessAgentError as exc:
-        logger.warning("Harness fallback cover_letter: %s", exc)
-        return await gemini_service.generate_cover_letter(
-            candidate_name=candidate_name,
-            exp_years=exp_years,
-            skills=skills,
-            work_history=work_history,
-            education=education,
-            company_name=company_name,
-            job_title=job_title,
-            must_have=must_have,
-            job_description=job_description,
+        if isinstance(result, dict) and isinstance(result.get("cover_letter"), dict):
+            return result["cover_letter"]
+        return result if isinstance(result, dict) else {}
+    except Exception as runtime_exc:
+        if not _is_harness_or_timeout_error(runtime_exc):
+            raise
+        logger.warning("Harness fallback cover_letter failed, using direct generator: %s", runtime_exc)
+        return await asyncio.wait_for(
+            gemini_service.generate_cover_letter(
+                candidate_name=candidate_name,
+                exp_years=exp_years,
+                skills=skills,
+                work_history=work_history,
+                education=education,
+                company_name=company_name,
+                job_title=job_title,
+                must_have=must_have,
+                job_description=job_description,
+            ),
+            timeout=_CANDIDATE_AI_CALL_TIMEOUT_S,
         )
 
 
@@ -333,35 +426,42 @@ async def _run_career_analysis(
     target_role: str,
 ) -> dict:
     try:
-        harness_result = await harness_agent_client.run_agent(
-            "career_analyst",
-            {
-                "candidate_name": candidate_name,
-                "experience_years": exp_years,
-                "skills": skills,
-                "work_history": work_history,
-                "education": education,
-                "career_breaks": career_breaks,
-                "target_role": target_role,
-            },
-            _auth_header(request),
+        auth_header = request.headers.get("authorization") if request else None
+        result = await asyncio.wait_for(
+            harness_agent_client.run_agent(
+                "career_analyst",
+                {
+                    "candidate_name": candidate_name,
+                    "experience_years": exp_years,
+                    "skills": skills,
+                    "work_history": work_history,
+                    "education": education,
+                    "career_breaks": career_breaks,
+                    "target_role": target_role,
+                },
+                auth_header,
+                timeout_s=_CANDIDATE_AI_CALL_TIMEOUT_S,
+            ),
+            timeout=_CANDIDATE_AI_CALL_TIMEOUT_S,
         )
-        result = harness_result.get("career_analysis") if isinstance(harness_result, dict) else None
-        if isinstance(result, dict):
-            return result
-        if isinstance(harness_result, dict):
-            return harness_result
-        raise HarnessAgentError("career_analyst", "invalid_result", str(harness_result))
-    except HarnessAgentError as exc:
-        logger.warning("Harness fallback career_analyst: %s", exc)
-        return await gemini_service.analyze_career_path(
-            candidate_name=candidate_name,
-            exp_years=exp_years,
-            skills=skills,
-            work_history=work_history,
-            education=education,
-            career_breaks=career_breaks,
-            target_role=target_role,
+        if isinstance(result, dict) and isinstance(result.get("career_analysis"), dict):
+            return result["career_analysis"]
+        return result if isinstance(result, dict) else {}
+    except Exception as runtime_exc:
+        if not _is_harness_or_timeout_error(runtime_exc):
+            raise
+        logger.warning("Harness fallback career_analyst failed, using direct analysis: %s", runtime_exc)
+        return await asyncio.wait_for(
+            gemini_service.analyze_career_path(
+                candidate_name=candidate_name,
+                exp_years=exp_years,
+                skills=skills,
+                work_history=work_history,
+                education=education,
+                career_breaks=career_breaks,
+                target_role=target_role,
+            ),
+            timeout=_CANDIDATE_AI_CALL_TIMEOUT_S,
         )
 
 def _company_info(hr_user) -> dict:
@@ -386,6 +486,26 @@ def _company_info(hr_user) -> dict:
         company_blog = prefs.get("companyWebsite") or prefs.get("company_website") or company_blog
 
     return {"company": company_name, "company_bio": company_bio, "company_blog": company_blog}
+
+
+def _public_jd_payload(jd: JobDescription, hr_user: User | None) -> dict:
+    """Candidate-facing JD payload without internal heavy fields."""
+    payload = {
+        "id": jd.id,
+        "title": jd.title,
+        "role": jd.role,
+        "location": jd.location,
+        "employment_type": jd.employment_type,
+        "experience_min": jd.experience_min,
+        "experience_max": jd.experience_max,
+        "must_have_skills": jd.must_have_skills or [],
+        "good_to_have_skills": jd.good_to_have_skills or [],
+        "description": jd.description,
+        "salary_range": jd.salary_range,
+        "created_at": jd.created_at,
+    }
+    payload.update(_company_info(hr_user))
+    return payload
 
 
 def _ensure_resume_text_quality(text: str, *, context: str) -> None:
@@ -452,19 +572,26 @@ async def _insert_application_atomic(
     Returns None when (user_id, job_id) already exists.
     """
     dialect = db.get_bind().dialect.name
+    conflict_where = and_(Candidate.user_id.isnot(None), Candidate.job_id.isnot(None))
 
     if dialect == "postgresql":
         stmt = (
             pg_insert(Candidate)
             .values(**candidate_values)
-            .on_conflict_do_nothing(constraint="uq_application_user_job")
+            .on_conflict_do_nothing(
+                index_elements=[Candidate.user_id, Candidate.job_id],
+                index_where=conflict_where,
+            )
             .returning(Candidate.id)
         )
     elif dialect == "sqlite":
         stmt = (
             sqlite_insert(Candidate)
             .values(**candidate_values)
-            .on_conflict_do_nothing(index_elements=["user_id", "job_id"])
+            .on_conflict_do_nothing(
+                index_elements=["user_id", "job_id"],
+                index_where=conflict_where,
+            )
             .returning(Candidate.id)
         )
     else:
@@ -474,6 +601,45 @@ async def _insert_application_atomic(
     if inserted_id is None:
         return None
     return await db.get(Candidate, inserted_id)
+
+
+def _resume_cache_is_current(stored: StoredResume) -> bool:
+    if settings.DATABASE_URL.startswith("sqlite"):
+        return (
+            stored.parse_version == PARSER_VERSION
+            and bool(stored.normalized_skills)
+        )
+    return (
+        stored.parse_version == PARSER_VERSION
+        and bool(stored.normalized_skills)
+        and bool(stored.embedding)
+    )
+
+
+def _apply_stored_resume_parse_cache(
+    stored: StoredResume,
+    parsed: dict,
+    embedding: list,
+    *,
+    file_hash: str | None = None,
+) -> None:
+    stored.normalized_skills = parsed.get("normalized_skills", [])
+    stored.skills = parsed.get("skills", [])
+    stored.experience_years = float(parsed.get("experience_years") or 0.0)
+    stored.skill_years = parsed.get("skill_years") or {}
+    stored.projects = parsed.get("projects", [])
+    stored.work_experience = parsed.get("work_experience", [])
+    stored.education = parsed.get("education", [])
+    stored.career_breaks = parsed.get("career_breaks", [])
+    stored.parsed_location = parsed.get("location")
+    stored.parsed_name = parsed.get("name")
+    stored.parsed_email = parsed.get("email")
+    stored.parsed_phone = parsed.get("phone")
+    stored.summary = parsed.get("summary")
+    stored.embedding = embedding or []
+    if file_hash is not None:
+        stored.file_hash = file_hash
+    stored.parse_version = PARSER_VERSION
 
 
 # ─── Public ───────────────────────────────────────────────────────────────────
@@ -487,40 +653,96 @@ async def list_public_jobs(
     db: AsyncSession = Depends(get_db),
 ):
     """Public endpoint — any visitor can browse active job listings."""
-    query = (
-        select(JobDescription, User)
-        .outerjoin(User, JobDescription.created_by == User.id)
+    jobs_query = (
+        select(JobDescription)
+        .options(
+            load_only(
+                JobDescription.id,
+                JobDescription.title,
+                JobDescription.role,
+                JobDescription.location,
+                JobDescription.employment_type,
+                JobDescription.experience_min,
+                JobDescription.experience_max,
+                JobDescription.must_have_skills,
+                JobDescription.good_to_have_skills,
+                JobDescription.description,
+                JobDescription.salary_range,
+                JobDescription.created_at,
+                JobDescription.created_by,
+            ),
+        )
         .where(JobDescription.is_active == True)
         .order_by(JobDescription.created_at.desc())
         .offset(skip).limit(limit)
     )
-    rows = (await db.execute(query)).all()
+    jobs = (await db.execute(jobs_query)).scalars().all()
 
-    output = []
-    for jd, hr_user in rows:
-        jd_data = {c.name: getattr(jd, c.name) for c in jd.__table__.columns}
-        jd_data.update(_company_info(hr_user))
-        output.append(jd_data)
+    creator_ids = [jd.created_by for jd in jobs if jd.created_by]
+    hr_map: dict[str, User] = {}
+    if creator_ids:
+        hr_rows = (await db.execute(
+            select(User)
+            .options(
+                load_only(
+                    User.id,
+                    User.full_name,
+                    User.bio,
+                    User.preferences,
+                )
+            )
+            .where(User.id.in_(creator_ids))
+        )).scalars().all()
+        hr_map = {u.id: u for u in hr_rows}
 
-    return output
+    return [_public_jd_payload(jd, hr_map.get(jd.created_by)) for jd in jobs]
 
 
 @router.get("/jobs/{job_id}", response_model=PublicJDOut)
 @limiter.limit("60/minute")
 async def get_public_job(request: Request, job_id: str, db: AsyncSession = Depends(get_db)):
-    query = (
-        select(JobDescription, User)
-        .outerjoin(User, JobDescription.created_by == User.id)
+    job_query = (
+        select(JobDescription)
+        .options(
+            load_only(
+                JobDescription.id,
+                JobDescription.title,
+                JobDescription.role,
+                JobDescription.location,
+                JobDescription.employment_type,
+                JobDescription.experience_min,
+                JobDescription.experience_max,
+                JobDescription.must_have_skills,
+                JobDescription.good_to_have_skills,
+                JobDescription.description,
+                JobDescription.salary_range,
+                JobDescription.created_at,
+                JobDescription.is_active,
+                JobDescription.created_by,
+            ),
+        )
         .where(JobDescription.id == job_id)
     )
-    row = (await db.execute(query)).first()
-    if not row or not row[0].is_active:
+    jd = (await db.execute(job_query)).scalar_one_or_none()
+    if not jd or not jd.is_active:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    jd, hr_user = row
-    jd_data = {c.name: getattr(jd, c.name) for c in jd.__table__.columns}
-    jd_data.update(_company_info(hr_user))
-    return jd_data
+    hr_user = None
+    if jd.created_by:
+        hr_user = (await db.execute(
+            select(User)
+            .options(
+                load_only(
+                    User.id,
+                    User.full_name,
+                    User.bio,
+                    User.preferences,
+                )
+            )
+            .where(User.id == jd.created_by)
+        )).scalar_one_or_none()
+
+    return _public_jd_payload(jd, hr_user)
 
 
 # ─── Apply to job (fresh file upload) ────────────────────────────────────────
@@ -568,18 +790,34 @@ async def apply_to_job(
         import json as _json2
         try:
             manual_cbs = _json2.loads(career_breaks)
-        except Exception:
-            pass
+        except (ValueError, TypeError) as exc:
+            logger.warning("Invalid career_breaks payload for candidate apply: %s", exc)
+            raise HTTPException(
+                status_code=422,
+                detail="career_breaks must be valid JSON.",
+            ) from exc
 
-    data = await _compute_resume_data_from_bytes(
-        file.filename or "resume.pdf", content, text, jd,
-        cached_candidate=None,
-        user_email=user.email,
-        auth_header=request.headers.get("authorization"),
-        manual_career_breaks=manual_cbs,
-    )
+    try:
+        data = await asyncio.wait_for(
+            _compute_resume_data_from_bytes(
+                file.filename or "resume.pdf", content, text, jd,
+                cached_candidate=None,
+                user_email=user.email,
+                auth_header=request.headers.get("authorization"),
+                manual_career_breaks=manual_cbs,
+                fast_mode=settings.DATABASE_URL.startswith("sqlite"),
+            ),
+            timeout=_CANDIDATE_APPLY_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Application processing is taking longer than expected. Please retry in a moment.",
+        ) from exc
 
-    final_email = data.get("email") or user.email
+    # Keep account-linked applications bound to the authenticated user email so
+    # downstream invite/notification delivery resolves to the active account.
+    final_email = user.email or data.get("email")
     
     # FIX: Prevent 500 IntegrityError when the parsed email already exists for this job under a different user_id
     email_conflict = (await db.execute(
@@ -599,16 +837,18 @@ async def apply_to_job(
         raise HTTPException(status_code=409, detail="You have already applied to this job")
 
     quiz_attempt: QuizAttempt | None = None
+    quiz_raw_token: Optional[str] = None
     if candidate.tag in (CandidateTag.strong, CandidateTag.medium):
         quiz = (await db.execute(
             select(Quiz).where(Quiz.job_id == jd.id, Quiz.is_active == True)
             .order_by(Quiz.created_at.desc())
         )).scalars().first()
         if quiz:
+            quiz_raw_token, quiz_token_hash = _new_quiz_token_pair()
             quiz_attempt = QuizAttempt(
                 quiz_id=quiz.id,
                 candidate_id=candidate.id,
-                access_token=secrets.token_urlsafe(32),
+                token_hash=quiz_token_hash,
                 token_expires_at=datetime.now(timezone.utc) + timedelta(days=7),
             )
             db.add(quiz_attempt)
@@ -616,9 +856,9 @@ async def apply_to_job(
     await db.flush()
     await log_action(db, user.id, "CANDIDATE_APPLY", "candidate", candidate.id,
                      details={"job_id": job_id, "tag": candidate.tag.value if candidate.tag else None})
-    if quiz_attempt and candidate.email:
+    if quiz_attempt and candidate.email and quiz_raw_token:
         try:
-            quiz_link = f"{settings.FRONTEND_URL.rstrip('/')}/take-quiz?token={quiz_attempt.access_token}"
+            quiz_link = f"{settings.FRONTEND_URL.rstrip('/')}/take-quiz?token={quiz_raw_token}"
             await push_to_candidate_by_email(
                 db,
                 candidate.email,
@@ -695,6 +935,7 @@ async def get_my_feedback(
     quiz_status: Optional[str] = None
     quiz_token: Optional[str] = None
     quiz_max_score: Optional[float] = None
+    rotated_attempt_token = False
 
     attempt = (await db.execute(
         select(QuizAttempt)
@@ -705,7 +946,20 @@ async def get_my_feedback(
         quiz_status = attempt.status.value
         quiz_max_score = attempt.max_score
         if attempt.status in (QuizStatus.pending, QuizStatus.in_progress):
-            quiz_token = attempt.access_token
+            now = datetime.now(timezone.utc)
+            expires_at = attempt.token_expires_at
+            expires_utc = (
+                expires_at
+                if expires_at is not None and expires_at.tzinfo is not None
+                else (expires_at.replace(tzinfo=timezone.utc) if expires_at is not None else None)
+            )
+            if expires_utc is None or now <= expires_utc:
+                quiz_token = _issue_attempt_token(attempt)
+                rotated_attempt_token = True
+
+    if rotated_attempt_token:
+        await db.flush()
+        await db.commit()
 
     return CandidatePortalOut(
         candidate_id=candidate.id,
@@ -823,7 +1077,14 @@ async def auto_send_quiz_to_shortlisted(
     for c in candidates:
         if c.id in already_sent:
             continue
-        db.add(QuizAttempt(quiz_id=quiz_id, candidate_id=c.id, access_token=secrets.token_urlsafe(32), token_expires_at=datetime.now(timezone.utc) + timedelta(days=7)))
+        db.add(
+            QuizAttempt(
+                quiz_id=quiz_id,
+                candidate_id=c.id,
+                token_hash=QuizAttempt.hash_access_token(secrets.token_urlsafe(32)),
+                token_expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+            )
+        )
         created += 1
 
     await db.flush()
@@ -857,6 +1118,7 @@ async def get_my_pending_quiz(
     now = datetime.now(timezone.utc)
     valid_attempts = []
     timed_out_count = 0
+    rotated_tokens: dict[str, str] = {}
 
     for a in attempts:
         if a.status == QuizStatus.in_progress and a.started_at:
@@ -869,9 +1131,32 @@ async def get_my_pending_quiz(
                 a.submitted_at = now  # FIX-8: Ensure submitted_at is never null on timeout
                 timed_out_count += 1
                 continue
-        valid_attempts.append(a)
 
-    if timed_out_count > 0:
+        if a.token_expires_at:
+            expires_utc = (
+                a.token_expires_at
+                if a.token_expires_at.tzinfo is not None
+                else a.token_expires_at.replace(tzinfo=timezone.utc)
+            )
+            if now > expires_utc:
+                a.status = QuizStatus.timed_out
+                if not a.submitted_at:
+                    a.submitted_at = now
+                timed_out_count += 1
+                continue
+
+        valid_attempts.append(a)
+        if a.status in (QuizStatus.pending, QuizStatus.in_progress):
+            expires_at = a.token_expires_at
+            expires_utc = (
+                expires_at
+                if expires_at is not None and expires_at.tzinfo is not None
+                else (expires_at.replace(tzinfo=timezone.utc) if expires_at is not None else None)
+            )
+            if expires_utc is None or now <= expires_utc:
+                rotated_tokens[a.id] = _issue_attempt_token(a)
+
+    if timed_out_count > 0 or rotated_tokens:
         await db.flush()
         await db.commit()
 
@@ -887,7 +1172,7 @@ async def get_my_pending_quiz(
                 "quiz_title":       a.quiz.title,
                 "duration_minutes": a.quiz.duration_minutes,
                 "status":           a.status.value,
-                "token":            a.access_token,
+                "token":            rotated_tokens.get(a.id),
                 "started_at":       a.started_at,
             }
             for a in valid_attempts
@@ -985,11 +1270,22 @@ async def evaluate_resume_precheck(
     text = await file_service.extract_text_from_bytes(file.filename or "resume", content)
 
     try:
-        data = await _compute_resume_data_from_bytes(
-            file.filename or "resume", content, text, jd,
-            cached_candidate=None,
-            auth_header=request.headers.get("authorization"),
+        data = await asyncio.wait_for(
+            _compute_resume_data_from_bytes(
+                file.filename or "resume", content, text, jd,
+                cached_candidate=None,
+                auth_header=request.headers.get("authorization"),
+            ),
+            timeout=_CANDIDATE_PRECHECK_TIMEOUT_S,
         )
+    except asyncio.TimeoutError as exc:
+        logger.warning("[evaluate-resume] scoring timed out for %s", file.filename)
+        raise HTTPException(
+            status_code=503,
+            detail="Resume evaluation timed out. Please try again.",
+        ) from exc
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error("[evaluate-resume] AI scoring failed: %s", exc)
         raise HTTPException(status_code=503, detail="AI scoring unavailable. Please try again.")
@@ -1071,30 +1367,41 @@ async def upload_stored_resume(
         logger.warning("Vault upload text extraction failed for %s: %s", file.filename, exc.detail)
         text = ""
     _ensure_resume_text_quality(text, context="resume vault upload")
-    resume_path = await file_service.save_file(content, file.filename or "resume")
+    try:
+        resume_path = await file_service.save_file(content, file.filename or "resume")
+    except RuntimeError as exc:
+        logger.error("Vault upload file save failed for %s: %s", file.filename, exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Resume storage is temporarily unavailable. Please try again shortly.",
+        ) from exc
     file_size_kb = max(1, len(content) // 1024)
 
     parsed, embedding = {}, []
     if text.strip():
-        try:
-            parsed, embedding = await asyncio.gather(
-                _run_parse_resume(request=request, resume_text=text),
-                _run_get_embedding(request=request, text=text[:6000]),
-                return_exceptions=True,
-            )
-            if isinstance(parsed, Exception):
-                logger.warning("Resume parse failed on vault upload: %s", parsed)
-                parsed = resume_fallback_parser.coerce_parsed_resume(None, text=text)
-            elif isinstance(parsed, dict):
-                parsed = resume_fallback_parser.coerce_parsed_resume(parsed, text=text)
-            else:
-                parsed = resume_fallback_parser.coerce_parsed_resume(None, text=text)
-            if isinstance(embedding, Exception):
-                logger.warning("Embedding failed on vault upload: %s", embedding)
-                embedding = []
-        except Exception as exc:
-            logger.error("AI processing failed on vault upload: %s", exc)
-            parsed, embedding = resume_fallback_parser.coerce_parsed_resume(None, text=text), []
+        if settings.DATABASE_URL.startswith("sqlite"):
+            parsed = resume_fallback_parser.coerce_parsed_resume(None, text=text)
+            embedding = []
+        else:
+            try:
+                parsed, embedding = await asyncio.gather(
+                    _run_parse_resume(request=request, resume_text=text),
+                    _run_get_embedding(request=request, text=text[:6000]),
+                    return_exceptions=True,
+                )
+                if isinstance(parsed, Exception):
+                    logger.warning("Resume parse failed on vault upload: %s", parsed)
+                    parsed = resume_fallback_parser.coerce_parsed_resume(None, text=text)
+                elif isinstance(parsed, dict):
+                    parsed = resume_fallback_parser.coerce_parsed_resume(parsed, text=text)
+                else:
+                    parsed = resume_fallback_parser.coerce_parsed_resume(None, text=text)
+                if isinstance(embedding, Exception):
+                    logger.warning("Embedding failed on vault upload: %s", embedding)
+                    embedding = []
+            except Exception as exc:
+                logger.error("AI processing failed on vault upload: %s", exc)
+                parsed, embedding = resume_fallback_parser.coerce_parsed_resume(None, text=text), []
 
     is_first = existing_count == 0
     if set_as_default or is_first:
@@ -1125,6 +1432,7 @@ async def upload_stored_resume(
         skill_years=parsed.get("skill_years") or {},
         embedding=embedding,
         summary=parsed.get("summary"),
+        parse_version=PARSER_VERSION,
     )
     db.add(stored)
     await db.commit()
@@ -1133,7 +1441,9 @@ async def upload_stored_resume(
 
 
 @router.patch("/my-resumes/{resume_id}", response_model=StoredResumeOut)
+@limiter.limit("30/minute")
 async def update_stored_resume(
+    request: Request,
     resume_id: str,
     body: StoredResumeLabelUpdate,
     db: AsyncSession = Depends(get_db),
@@ -1187,8 +1497,15 @@ async def delete_stored_resume(
             # breaks when Windows paths are stored in a Linux Docker container.
             if _upload_dir in _real.parents or _real == _upload_dir:
                 os.remove(stored.resume_path)
-    except Exception:
+    except FileNotFoundError:
+        # Already removed by another process or cleanup job.
         pass
+    except Exception as exc:
+        logger.error("Failed to remove stored resume file %s: %s", stored.resume_path, exc)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete resume file from storage. Please retry.",
+        ) from exc
 
     await db.delete(stored)
     await db.flush()
@@ -1274,7 +1591,7 @@ async def apply_with_vault_resume(
     if not stored:
         raise HTTPException(status_code=404, detail="Stored resume not found")
 
-    has_cache = bool(stored.normalized_skills and stored.embedding)
+    has_cache = _resume_cache_is_current(stored)
 
     if has_cache:
         exp_years = float(stored.experience_years or 0.0)
@@ -1293,17 +1610,14 @@ async def apply_with_vault_resume(
         # Fallback to summary only if read/decrypt/extract fails.
         if stored.resume_path:
             try:
-                import pathlib
-                from types import SimpleNamespace
                 file_bytes = await asyncio.to_thread(
                     encryption_service.decrypt_file_from_path,
                     stored.resume_path,
                 )
-                _fake = SimpleNamespace(filename=stored.original_filename)
-                async def _read() -> bytes:
-                    return file_bytes
-                _fake.read = _read  # type: ignore[attr-defined]
-                extracted_text, _ = await file_service.extract_text(_fake)
+                extracted_text = await file_service.extract_text_from_bytes(
+                    stored.original_filename,
+                    file_bytes,
+                )
                 if extracted_text:
                     raw_text_for_store = extracted_text[:40000]
             except Exception as _raw_text_err:
@@ -1316,9 +1630,8 @@ async def apply_with_vault_resume(
         if not os.path.exists(stored.resume_path):
             raise HTTPException(status_code=404, detail="Resume file missing from storage")
 
-        # FIX Finding 8 & 9: use Path.read_bytes + SimpleNamespace
+        # FIX Finding 8 & 9: use direct decrypted bytes path
         import pathlib
-        from types import SimpleNamespace
         encrypted_size = await asyncio.to_thread(lambda: pathlib.Path(stored.resume_path).stat().st_size)
         # HIGH-1 FIX: use settings instead of hardcoded 5 MB
         if encrypted_size > settings.MAX_FILE_SIZE_MB * 1024 * 1024:
@@ -1335,52 +1648,61 @@ async def apply_with_vault_resume(
             )
         file_hash = hashlib.sha256(file_bytes).hexdigest()
 
-        _fake = SimpleNamespace(filename=stored.original_filename)
-        async def _read() -> bytes:
-            return file_bytes
-        _fake.read = _read  # type: ignore[attr-defined]
+        class _VaultFileStub:
+            """
+            UploadFile-compatible minimal adapter used only by vault-apply.
+            Keeps file_service contract explicit and prevents ad-hoc attribute errors.
+            """
 
-        text, content = await file_service.extract_text(_fake)
+            def __init__(self, filename: str, content: bytes):
+                import mimetypes
+
+                self.filename = filename or "resume.pdf"
+                self.content_type = mimetypes.guess_type(self.filename)[0] or "application/octet-stream"
+                self.headers = {"content-length": str(len(content))}
+                self._content = content
+                self._consumed = False
+
+            async def read(self) -> bytes:
+                if self._consumed:
+                    return b""
+                self._consumed = True
+                return self._content
+
+        vault_file = _VaultFileStub(stored.original_filename or "resume.pdf", file_bytes)
+        text, _ = await file_service.extract_text(vault_file)
         _ensure_resume_text_quality(text, context="stored resume re-parse")
         parsed: dict = {}
         resume_embedding: list = []
-        parsed_res, embedding_res = await asyncio.gather(
-            _run_parse_resume(request=request, resume_text=text),
-            _run_get_embedding(request=request, text=text[:6000]),
-            return_exceptions=True,
-        )
-        if isinstance(parsed_res, Exception):
-            logger.warning("[vault-apply] parse_resume unavailable; using stored fallback fields: %s", parsed_res)
+        if settings.DATABASE_URL.startswith("sqlite"):
             parsed = resume_fallback_parser.coerce_parsed_resume(None, text=text)
-        else:
-            parsed = resume_fallback_parser.coerce_parsed_resume(
-                parsed_res if isinstance(parsed_res, dict) else None,
-                text=text,
-            )
-        if isinstance(embedding_res, Exception):
-            logger.warning("[vault-apply] embedding unavailable; using zero vector similarity: %s", embedding_res)
             resume_embedding = []
         else:
-            resume_embedding = embedding_res or []
+            parsed_res, embedding_res = await asyncio.gather(
+                _run_parse_resume(request=request, resume_text=text),
+                _run_get_embedding(request=request, text=text[:6000]),
+                return_exceptions=True,
+            )
+            if isinstance(parsed_res, Exception):
+                logger.warning("[vault-apply] parse_resume unavailable; using stored fallback fields: %s", parsed_res)
+                parsed = resume_fallback_parser.coerce_parsed_resume(None, text=text)
+            else:
+                parsed = resume_fallback_parser.coerce_parsed_resume(
+                    parsed_res if isinstance(parsed_res, dict) else None,
+                    text=text,
+                )
+            if isinstance(embedding_res, Exception):
+                logger.warning("[vault-apply] embedding unavailable; using zero vector similarity: %s", embedding_res)
+                resume_embedding = []
+            else:
+                resume_embedding = embedding_res or []
 
-        # Keep existing stored parse cache when AI parse is unavailable so the
-        # application flow still completes under temporary AI outages.
-        if parsed:
-            stored.normalized_skills = parsed.get("normalized_skills", [])
-            stored.skills = parsed.get("skills", [])
-            stored.experience_years = float(parsed.get("experience_years") or 0.0)
-            stored.skill_years = parsed.get("skill_years") or {}
-            stored.projects = parsed.get("projects", [])
-            stored.work_experience = parsed.get("work_experience", [])
-            stored.education = parsed.get("education", [])
-            stored.career_breaks = parsed.get("career_breaks", [])
-            stored.parsed_location = parsed.get("location")
-            stored.parsed_name = parsed.get("name")
-            stored.parsed_email = parsed.get("email")
-            stored.parsed_phone = parsed.get("phone")
-            stored.summary = parsed.get("summary")
-        stored.embedding = resume_embedding
-        stored.file_hash = file_hash
+        _apply_stored_resume_parse_cache(
+            stored,
+            parsed if isinstance(parsed, dict) else {},
+            resume_embedding,
+            file_hash=file_hash,
+        )
         # FIX Finding 24: Commit parsing cache immediately so it's not lost if AI scoring throws exception
         await db.commit()
 
@@ -1413,7 +1735,11 @@ async def apply_with_vault_resume(
         jd_education_requirement=getattr(jd, "education_requirement", None),
     )
     loc_pct = scoring_service.location_match_score(location, jd.location)
-    vec_sim = scoring_service.cosine_similarity(resume_embedding, jd.embedding or [])
+    try:
+        vec_sim = scoring_service.cosine_similarity(resume_embedding, jd.embedding or [])
+    except ValueError as vec_err:
+        logger.warning("Vector similarity degraded for candidate preview: %s", vec_err)
+        vec_sim = 0.0
 
     _jd_content = _json.dumps({
         "must": sorted(jd.must_have_skills or []), "good": sorted(jd.good_to_have_skills or []),
@@ -1423,27 +1749,28 @@ async def apply_with_vault_resume(
     jd_hash = hashlib.sha256(_jd_content.encode()).hexdigest()[:16]
 
     ai_scores: dict | None = None
-    try:
-        ai_scores = await _run_resume_scorer(
-            request=request,
-            parsed_resume={
-                "name": stored.parsed_name if has_cache else None,
-                "email": stored.parsed_email if has_cache else None,
-                "location": location, "experience_years": exp_years,
-                "skills": stored.skills or normalized_skills,
-                "normalized_skills": normalized_skills, "skill_years": skill_yrs,
-                "work_experience": work_experience, "projects": projects, "education": education,
-            },
-            job_title=jd.title,
-            exp_min=jd.experience_min,
-            exp_max=jd.experience_max,
-            must_have=jd.must_have_skills or [],
-            good_to_have=jd.good_to_have_skills or [],
-            description=jd.description or "",
-        )
-    except Exception as ai_err:
-        logger.warning(
-            "[vault-apply] AI scoring failed for %s — rule-based fallback: %s", stored.label, ai_err)
+    if not settings.DATABASE_URL.startswith("sqlite"):
+        try:
+            ai_scores = await _run_resume_scorer(
+                request=request,
+                parsed_resume={
+                    "name": stored.parsed_name if has_cache else None,
+                    "email": stored.parsed_email if has_cache else None,
+                    "location": location, "experience_years": exp_years,
+                    "skills": stored.skills or normalized_skills,
+                    "normalized_skills": normalized_skills, "skill_years": skill_yrs,
+                    "work_experience": work_experience, "projects": projects, "education": education,
+                },
+                job_title=jd.title,
+                exp_min=jd.experience_min,
+                exp_max=jd.experience_max,
+                must_have=jd.must_have_skills or [],
+                good_to_have=jd.good_to_have_skills or [],
+                description=jd.description or "",
+            )
+        except Exception as ai_err:
+            logger.warning(
+                "[vault-apply] AI scoring failed for %s - rule-based fallback: %s", stored.label, ai_err)
 
     has_jd_criteria = _jd_has_meaningful_criteria(jd)
     phase_b_weights, phase_b_bias, phase_b_meta = scoring_service.build_phase_b_calibration(
@@ -1471,6 +1798,9 @@ async def apply_with_vault_resume(
             phase_c_enabled=bool(settings.PHASE_C_SCORING_ENABLED),
             ai_confidence=str((ai_scores or {}).get("confidence", "")),
             jd_signal_strength=phase_b_meta.get("jd_signal_strength"),
+            required_skills=jd.must_have_skills or [],
+            work_experience=work_experience,
+            skill_years=skill_yrs,
         )
     )
 
@@ -1501,7 +1831,9 @@ async def apply_with_vault_resume(
         "jd_hash": jd_hash,
     }
 
-    final_email = (stored.parsed_email if has_cache else None) or user.email
+    # Use authenticated account email as canonical contact for portal-bound
+    # applications; parsed resume email can differ and break account notifications.
+    final_email = user.email or (stored.parsed_email if has_cache else None)
     
     # FIX: Prevent 500 IntegrityError when the parsed email already exists for this job under a different user_id
     email_conflict = (await db.execute(
@@ -1536,6 +1868,7 @@ async def apply_with_vault_resume(
         "location_match_pct": loc_pct,
         "vector_similarity": vec_sim,
         "resume_score": resume_score,
+        "final_score": resume_score,
         "tag": tag,
         "score_breakdown": score_breakdown,
     }
@@ -1544,16 +1877,18 @@ async def apply_with_vault_resume(
         raise HTTPException(status_code=409, detail="You have already applied to this job")
 
     quiz_attempt: QuizAttempt | None = None
+    quiz_raw_token: Optional[str] = None
     if tag in (CandidateTag.strong, CandidateTag.medium):
         quiz = (await db.execute(
             select(Quiz).where(Quiz.job_id == jd.id, Quiz.is_active == True)
             .order_by(Quiz.created_at.desc())
         )).scalars().first()
         if quiz:
+            quiz_raw_token, quiz_token_hash = _new_quiz_token_pair()
             quiz_attempt = QuizAttempt(
                 quiz_id=quiz.id,
                 candidate_id=candidate.id,
-                access_token=secrets.token_urlsafe(32),
+                token_hash=quiz_token_hash,
                 token_expires_at=datetime.now(timezone.utc) + timedelta(days=7),
             )
             db.add(quiz_attempt)
@@ -1561,9 +1896,9 @@ async def apply_with_vault_resume(
     await db.flush()
     await log_action(db, user.id, "CANDIDATE_APPLY_VAULT", "candidate", candidate.id,
                      details={"job_id": job_id, "stored_resume_id": resume_id, "tag": tag.value if tag else None})
-    if quiz_attempt and candidate.email:
+    if quiz_attempt and candidate.email and quiz_raw_token:
         try:
-            quiz_link = f"{settings.FRONTEND_URL.rstrip('/')}/take-quiz?token={quiz_attempt.access_token}"
+            quiz_link = f"{settings.FRONTEND_URL.rstrip('/')}/take-quiz?token={quiz_raw_token}"
             await push_to_candidate_by_email(
                 db,
                 candidate.email,
@@ -1614,7 +1949,7 @@ async def get_resume_fit_score(
     if not stored:
         raise HTTPException(status_code=404, detail="Stored resume not found")
 
-    has_cache = bool(stored.normalized_skills and stored.embedding)
+    has_cache = _resume_cache_is_current(stored)
 
     if has_cache:
         normalized_skills = stored.normalized_skills or []
@@ -1625,12 +1960,11 @@ async def get_resume_fit_score(
         location = stored.parsed_location
         resume_embedding = stored.embedding or []
     else:
-        logger.info("Cache miss for StoredResume %s — re-parsing", stored.id)
+        logger.info("Cache miss for StoredResume %s - re-parsing", stored.id)
         if not os.path.exists(stored.resume_path):
             raise HTTPException(status_code=404, detail="Resume file missing from storage")
 
         import pathlib
-        from types import SimpleNamespace
         encrypted_size = await asyncio.to_thread(lambda: pathlib.Path(stored.resume_path).stat().st_size)
         # HIGH-1 FIX: use settings instead of hardcoded 5 MB
         if encrypted_size > settings.MAX_FILE_SIZE_MB * 1024 * 1024:
@@ -1647,41 +1981,35 @@ async def get_resume_fit_score(
             )
         file_hash = hashlib.sha256(file_bytes).hexdigest()
 
-        _fake = SimpleNamespace(filename=stored.original_filename)
-        async def _read() -> bytes:
-            return file_bytes
-        _fake.read = _read  # type: ignore[attr-defined]
-
-        text, _ = await file_service.extract_text(_fake)
-        _ensure_resume_text_quality(text, context="resume-fit preview re-parse")
-        parsed, resume_embedding = await asyncio.gather(
-            _run_parse_resume(request=request, resume_text=text),
-            _run_get_embedding(request=request, text=text[:6000]),
-            return_exceptions=True,
+        text = await file_service.extract_text_from_bytes(
+            stored.original_filename,
+            file_bytes,
         )
-        if isinstance(parsed, Exception):
+        _ensure_resume_text_quality(text, context="resume-fit preview re-parse")
+        if settings.DATABASE_URL.startswith("sqlite"):
             parsed = resume_fallback_parser.coerce_parsed_resume(None, text=text)
-        elif isinstance(parsed, dict):
-            parsed = resume_fallback_parser.coerce_parsed_resume(parsed, text=text)
-        else:
-            parsed = resume_fallback_parser.coerce_parsed_resume(None, text=text)
-        if isinstance(resume_embedding, Exception):
             resume_embedding = []
+        else:
+            parsed, resume_embedding = await asyncio.gather(
+                _run_parse_resume(request=request, resume_text=text),
+                _run_get_embedding(request=request, text=text[:6000]),
+                return_exceptions=True,
+            )
+            if isinstance(parsed, Exception):
+                parsed = resume_fallback_parser.coerce_parsed_resume(None, text=text)
+            elif isinstance(parsed, dict):
+                parsed = resume_fallback_parser.coerce_parsed_resume(parsed, text=text)
+            else:
+                parsed = resume_fallback_parser.coerce_parsed_resume(None, text=text)
+            if isinstance(resume_embedding, Exception):
+                resume_embedding = []
 
-        stored.normalized_skills = parsed.get("normalized_skills", [])
-        stored.skills = parsed.get("skills", [])
-        stored.experience_years = float(parsed.get("experience_years") or 0.0)
-        stored.skill_years = parsed.get("skill_years") or {}
-        stored.projects = parsed.get("projects", [])
-        stored.work_experience = parsed.get("work_experience", [])
-        stored.education = parsed.get("education", [])
-        stored.parsed_location = parsed.get("location")
-        stored.parsed_name = parsed.get("name")
-        stored.parsed_email = parsed.get("email")
-        stored.parsed_phone = parsed.get("phone")
-        stored.summary = parsed.get("summary")
-        stored.embedding = resume_embedding
-        stored.file_hash = file_hash
+        _apply_stored_resume_parse_cache(
+            stored,
+            parsed if isinstance(parsed, dict) else {},
+            resume_embedding if isinstance(resume_embedding, list) else [],
+            file_hash=file_hash,
+        )
         await db.commit()
 
         normalized_skills = stored.normalized_skills or []
@@ -1704,7 +2032,11 @@ async def get_resume_fit_score(
         jd_education_requirement=getattr(jd, "education_requirement", None),
     )
     loc_pct = scoring_service.location_match_score(location, jd.location)
-    vec_sim = scoring_service.cosine_similarity(resume_embedding, jd.embedding or [])
+    try:
+        vec_sim = scoring_service.cosine_similarity(resume_embedding, jd.embedding or [])
+    except ValueError as vec_err:
+        logger.warning("Vector similarity degraded for candidate apply flow: %s", vec_err)
+        vec_sim = 0.0
 
     # BUG-3 FIX: use the same override function as the apply path (ai_scores=None
     # means pure rule-based weights are applied, but the tier-based weight distribution
@@ -1739,6 +2071,9 @@ async def get_resume_fit_score(
         phase_c_enabled=bool(settings.PHASE_C_SCORING_ENABLED),
         ai_confidence=None,
         jd_signal_strength=phase_b_meta.get("jd_signal_strength"),
+        required_skills=jd.must_have_skills or [],
+        work_experience=stored.work_experience or [],
+        skill_years=skill_yrs,
     )
     tag = scoring_service.assign_tag(resume_score)
 
@@ -1802,6 +2137,9 @@ async def enhance_resume(
     if not jd or not jd.is_active:
         raise HTTPException(status_code=404, detail="Job not found or closed")
 
+    parse_degraded = False
+    parse_degraded_reason = ""
+
     if body.resume_id:
         stored = (await db.execute(
             select(StoredResume).where(StoredResume.id ==
@@ -1821,7 +2159,6 @@ async def enhance_resume(
         if _upload_dir_p not in _real_p.parents and _real_p != _upload_dir_p:
             raise HTTPException(status_code=403, detail="Access to this file is not permitted")
 
-        from types import SimpleNamespace
         encrypted_size = await asyncio.to_thread(lambda: _real_p.stat().st_size)
         # HIGH-1 FIX: use settings instead of hardcoded 5 MB
         if encrypted_size > settings.MAX_FILE_SIZE_MB * 1024 * 1024:
@@ -1834,12 +2171,10 @@ async def enhance_resume(
                 detail="Resume decryption failed. File encryption key mismatch or corruption.",
             )
 
-        _fake = SimpleNamespace(filename=stored.original_filename)
-        async def _read() -> bytes:
-            return file_bytes
-        _fake.read = _read  # type: ignore[attr-defined]
-
-        resume_text, _ = await file_service.extract_text(_fake)
+        resume_text = await file_service.extract_text_from_bytes(
+            stored.original_filename,
+            file_bytes,
+        )
         normalized_skills = stored.normalized_skills or []
 
     else:
@@ -1851,7 +2186,10 @@ async def enhance_resume(
                 text=resume_text,
             )
             normalized_skills = parsed.get("normalized_skills", [])
-        except Exception:
+        except Exception as exc:
+            logger.warning("Resume parse failed during enhance preview, using fast fallback: %s", exc)
+            parse_degraded = True
+            parse_degraded_reason = str(exc)
             normalized_skills = resume_fallback_parser.fast_parse_resume_text(
                 resume_text
             ).get("normalized_skills", [])
@@ -1875,6 +2213,8 @@ async def enhance_resume(
             current_score=current_score,
             missing_skills=missing_skills,
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error("[resume/enhance] AI enhancement failed: %s", exc)
         raise HTTPException(
@@ -1884,6 +2224,8 @@ async def enhance_resume(
         "job_title":               jd.title,
         "current_skill_match_pct": round(current_score, 1),
         "missing_must_have":       missing_skills,
+        "parser_degraded":         parse_degraded,
+        "parser_degraded_reason":  parse_degraded_reason if parse_degraded else None,
         **enhancement,
     }
 
@@ -1941,6 +2283,8 @@ async def build_resume(
             candidate_data=candidate_data,
             target_role=body.target_role,
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error("[resume/build] AI resume build failed: %s", exc)
         raise HTTPException(
@@ -2009,6 +2353,8 @@ async def generate_cover_letter(
             company_name=company_name, job_title=jd.title,
             must_have=jd.must_have_skills or [], job_description=jd.description or "",
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error("[cover-letter] AI generation failed: %s", exc)
         raise HTTPException(
@@ -2066,6 +2412,8 @@ async def get_career_analysis(
             skills=skills, work_history=work_history, education=education,
             career_breaks=career_breaks, target_role=target_role or "",
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error("[career-analysis] AI analysis failed: %s", exc)
         raise HTTPException(
@@ -2242,3 +2590,5 @@ async def parse_resume_for_builder(
             "parsed_from_file": file.filename,
         },
     }
+
+

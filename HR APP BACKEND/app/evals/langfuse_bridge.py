@@ -40,8 +40,13 @@ def _get_langfuse_client():
         try:
             from langfuse import Langfuse
             _lf_client = Langfuse()
-        except Exception:
-            pass
+        except Exception as _lf_exc:
+            import logging as _lfl
+            _lfl.getLogger(__name__).warning(
+                "Langfuse observability disabled - init failed: %s. "
+                "Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY to enable.",
+                _lf_exc,
+            )
     return _lf_client
 
 
@@ -59,13 +64,13 @@ def push_eval_to_langfuse(result: "EvalResult", trace_id: str | None = None) -> 
 
         lf = _get_langfuse_client()
         if lf is None:
-            logger.debug("Langfuse not installed — skipping score push.")
+            logger.debug("Langfuse not installed - skipping score push.")
             return
 
         # Resolve trace_id — prefer explicit, fall back to active context
         tid = trace_id or langfuse_context.get_current_trace_id()
         if not tid:
-            logger.debug("push_eval_to_langfuse: no active trace — scores not pushed.")
+            logger.debug("push_eval_to_langfuse: no active trace - scores not pushed.")
             return
 
         for metric in result.metrics:
@@ -101,7 +106,7 @@ def push_eval_to_langfuse(result: "EvalResult", trace_id: str | None = None) -> 
         )
 
     except ImportError:
-        logger.debug("Langfuse not installed — skipping score push.")
+        logger.debug("Langfuse not installed - skipping score push.")
     except Exception as exc:
         # Never let observability failures crash the main request path
         logger.warning("push_eval_to_langfuse error (non-fatal): %s", exc)

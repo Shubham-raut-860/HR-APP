@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from typing import Awaitable, Callable, List
+from importlib import import_module
 
 from fastapi import HTTPException, Request
 from pydantic import BaseModel
@@ -9,13 +10,77 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models import Candidate, JobDescription, User
-from app.services import gemini_service, scoring_service
 from app.services.auth_service import log_action
+
+
+class _LazyModule:
+    def __init__(self, module_path: str):
+        self._module_path = module_path
+        self._module = None
+
+    def _load(self):
+        if self._module is None:
+            self._module = import_module(self._module_path)
+        return self._module
+
+    def __getattr__(self, item):
+        return getattr(self._load(), item)
+
+
+gemini_service = _LazyModule("app.services.gemini_service")
+scoring_service = _LazyModule("app.services.scoring_service")
+harness_agent_client = _LazyModule("app.services.harness_agent_client")
+
+
+def _is_harness_or_timeout_error(exc: Exception) -> bool:
+    return isinstance(exc, asyncio.TimeoutError) or exc.__class__.__name__ == "HarnessAgentError"
 
 
 class ImportFromPoolRequest(BaseModel):
     job_id: str
     candidate_ids: List[str]
+
+
+async def _run_resume_scorer_with_fallback(
+    *,
+    request: Request,
+    parsed_resume: dict,
+    job: JobDescription,
+) -> dict:
+    try:
+        result = await harness_agent_client.run_agent(
+            "resume_scorer",
+            {
+                "parsed_resume": parsed_resume,
+                "job_title": job.title,
+                "exp_min": job.experience_min,
+                "exp_max": job.experience_max,
+                "must_have": job.must_have_skills or [],
+                "good_to_have": job.good_to_have_skills or [],
+                "description": job.description or "",
+                "jd_embedding": job.embedding or [],
+            },
+            request.headers.get("authorization"),
+        )
+        if isinstance(result, dict) and isinstance(result.get("score_result"), dict):
+            return result["score_result"]
+        return result if isinstance(result, dict) else {}
+    except Exception as runtime_exc:
+        if not _is_harness_or_timeout_error(runtime_exc):
+            raise
+        logger.warning(
+            "Harness fallback resume_scorer (import-from-pool) failed, using direct scorer: %s",
+            runtime_exc,
+        )
+        return await gemini_service.score_resume_against_jd(
+            parsed_resume=parsed_resume,
+            job_title=job.title,
+            exp_min=job.experience_min,
+            exp_max=job.experience_max,
+            must_have=job.must_have_skills or [],
+            good_to_have=job.good_to_have_skills or [],
+            description=job.description or "",
+        )
 
 
 async def import_from_pool_impl(
@@ -87,7 +152,11 @@ async def import_from_pool_impl(
             jd_education_requirement=getattr(job, "education_requirement", None),
         )
         loc_pct = scoring_service.location_match_score(getattr(c, "location", None), job.location)
-        vec_sim = scoring_service.cosine_similarity(c.embedding or [], job.embedding or [])
+        try:
+            vec_sim = scoring_service.cosine_similarity(c.embedding or [], job.embedding or [])
+        except ValueError as vec_err:
+            logger.warning("[import-from-pool] Vector similarity degraded for candidate %s: %s", cid, vec_err)
+            vec_sim = 0.0
 
         ai_scores: dict | None = None
 
@@ -127,14 +196,10 @@ async def import_from_pool_impl(
                     "education":         c.education or [],
                 }
                 async with ai_sem_import:
-                    ai_scores = await gemini_service.score_resume_against_jd(
+                    ai_scores = await _run_resume_scorer_with_fallback(
+                        request=request,
                         parsed_resume=parsed_resume,
-                        job_title=job.title,
-                        exp_min=job.experience_min,
-                        exp_max=job.experience_max,
-                        must_have=job.must_have_skills or [],
-                        good_to_have=job.good_to_have_skills or [],
-                        description=job.description or "",
+                        job=job,
                     )
             except Exception:
                 logger.warning("[import-from-pool] AI scoring failed for %s", cid)
@@ -176,6 +241,9 @@ async def import_from_pool_impl(
                 phase_c_enabled=bool(settings.PHASE_C_SCORING_ENABLED),
                 ai_confidence=str((ai_scores or {}).get("confidence", "")),
                 jd_signal_strength=phase_b_meta.get("jd_signal_strength"),
+                required_skills=job.must_have_skills or [],
+                work_experience=c.work_experience or [],
+                skill_years=skill_years_c,
             )
         )
 
@@ -235,6 +303,7 @@ async def import_from_pool_impl(
             location_match_pct=loc_pct,
             vector_similarity=vec_sim,
             resume_score=final_score,
+            final_score=final_score,
             score_breakdown=new_breakdown,
             tag=scoring_service.assign_tag(final_score),
         )

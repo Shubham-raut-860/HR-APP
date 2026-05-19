@@ -1,39 +1,59 @@
-# OS/editor
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
-
-# Secrets/env
-.env
-.env.*
-.env.example
-.env.examples
-
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
+.venv/
+.venv*/
+*/.venv/
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+*.sqlite3
+uploads/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.coverage
 htmlcov/
-.venv/
-venv/
+.coverage
+dist-python/
 
-# Node
+# Node / Frontend
 node_modules/
 dist/
-build/
-coverage/
-*.tsbuildinfo
+*.bak
+*.quickshare.bak
+*.recovery.bak
 
-# Logs/runtime
+# Docker
+*.tar
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs / runtime noise
 *.log
 *.pid
 
-# Local DB/files
-*.sqlite
-*.db
-*.db-journal
-*.zip
+# QA/audit/runtime artifacts
+phase*.json
+*_report*.json
+e2e_artifacts/
+stitch_previews/
+testsprite_tests/tmp/
+audit_artifacts/
+audit files/
+mlartifacts/
+scratch_logs/
+Harness/
+*_manifest*.txt
+*_files*.txt
+*_map*.json
+*_scan*.json
+ATS.zip

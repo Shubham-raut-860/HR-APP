@@ -52,6 +52,7 @@ function CandidateJobDetailContent() {
   const [fitScore, setFitScore]                   = useState<ResumeFitScore | null>(null);
   const [fitLoading, setFitLoading]               = useState(false);
   const [showApplyConfirm, setShowApplyConfirm]   = useState(false);
+  const evaluationPassThreshold = Number(job?.pass_threshold ?? 60);
 
   // ── Data loading ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -424,11 +425,11 @@ function CandidateJobDetailContent() {
                 <div className="space-y-4 border rounded-xl p-4 bg-muted/30">
                   <div className="flex justify-between items-center">
                     <span className="font-semibold text-sm">Match Score</span>
-                    <span className={cn("font-bold text-sm", evaluation.match_score >= 60 ? "text-emerald-500" : "text-amber-500")}>
+                    <span className={cn("font-bold text-sm", evaluation.match_score >= evaluationPassThreshold ? "text-emerald-500" : "text-amber-500")}>
                       {evaluation.match_score}%
                     </span>
                   </div>
-                  <Progress value={evaluation.match_score} className={cn("h-2", evaluation.match_score >= 60 ? "[&>div]:bg-emerald-500" : "[&>div]:bg-amber-500")} />
+                  <Progress value={evaluation.match_score} className={cn("h-2", evaluation.match_score >= evaluationPassThreshold ? "[&>div]:bg-emerald-500" : "[&>div]:bg-amber-500")} />
                   {evaluation.missing_skills?.length > 0 ? (
                     <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
                       <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1 flex items-center gap-1">

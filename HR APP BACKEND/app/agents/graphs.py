@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from langgraph.graph import END, START, StateGraph
 
 from app.agents import nodes
@@ -13,6 +15,8 @@ from app.agents.state import (
     ResumeAgentState,
     ResumeScreeningState,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ─── Existing graphs (unchanged) ─────────────────────────────────────────────
@@ -126,8 +130,9 @@ def build_full_resume_pipeline_graph():
 
 def build_quiz_with_code_eval_graph():
     """
-    Quiz pipeline extended with a code evaluation node:
-      quiz_agent(generate) → [quiz submission] → quiz_agent(evaluate) → code_evaluation_agent
+    Quiz pipeline with explicit operation routing:
+      generate request -> quiz_generate -> END
+      evaluate request -> quiz_evaluate -> optional code_evaluation_agent -> END
     """
     from app.agents.specialized import QuizAgent, CodeEvaluationAgent
 
@@ -138,6 +143,12 @@ def build_quiz_with_code_eval_graph():
     async def _evaluate(state): return await _quiz({**state, "operation": "evaluate"})
     async def _code_eval(state): return await _code(state)
 
+    def _route_start(state) -> str:
+        operation = str(state.get("operation") or "generate").strip().lower()
+        if operation == "evaluate":
+            return "evaluate"
+        return "generate"
+
     def _route_code(state) -> str:
         return "code_eval" if state.get("user_code") else "end"
 
@@ -146,8 +157,12 @@ def build_quiz_with_code_eval_graph():
     graph.add_node("quiz_evaluate", _evaluate)
     graph.add_node("code_evaluation_agent", _code_eval)
 
-    graph.add_edge(START, "quiz_generate")
-    graph.add_edge("quiz_generate", "quiz_evaluate")
+    graph.add_conditional_edges(
+        START,
+        _route_start,
+        {"generate": "quiz_generate", "evaluate": "quiz_evaluate"},
+    )
+    graph.add_edge("quiz_generate", END)
     graph.add_conditional_edges(
         "quiz_evaluate",
         _route_code,
@@ -218,7 +233,8 @@ def build_career_tools_graph():
         if op in ("enhance_resume", "full_career"): return "enhance"
         if op == "build_resume": return "build"
         if op == "cover_letter": return "cover"
-        raise ValueError(f"career_tools: unknown operation '{op}'")
+        logger.warning("career_tools: unknown operation '%s', defaulting to enhance_resume", op)
+        return "enhance"
 
     def _route_after_enhance(state) -> str:
         return "cover" if state.get("operation") == "full_career" else "end"
@@ -240,3 +256,4 @@ def build_career_tools_graph():
     graph.add_edge("build_resume", END)
     graph.add_edge("cover_letter", END)
     return graph.compile()
+

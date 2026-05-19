@@ -75,7 +75,7 @@ def _build_prompt(prompt_name: str, fallback_template: str, **kwargs) -> str:
 # BUG-9 FIX: module-level logger.info fires before logging.basicConfig / any handler
 # is attached (Python's lastResort only shows WARNING+). The info line was silently
 # swallowed in production. Downgraded to debug — it's a startup trace, not a warning.
-logger.debug("Plain openai client active — LLM calls traced via MLflow.")
+logger.debug("Plain openai client active - LLM calls traced via MLflow.")
 
 _ENDPOINT = settings.AZURE_OPENAI_ENDPOINT.rstrip("/").removesuffix("/openai/v1")
 _CHAT_DEPLOYMENT = settings.AZURE_CHAT_DEPLOYMENT
@@ -100,6 +100,9 @@ _AI_CONSECUTIVE_TRANSIENT_FAILURES: int = 0
 _AI_CIRCUIT_LOCK = threading.Lock()
 _DETERMINISTIC_SCORING_TASKS = {"score_resume", "evaluate_code"}
 _MODEL_OUTPUT_PARSE_FAILURES = 0
+_MISSING_DEPLOYMENTS: set[str] = set()
+_MISSING_DEPLOYMENTS_LOCK = threading.Lock()
+_PROBING_DEPLOYMENTS: set[str] = set()
 
 
 def _increment_parse_failure_metric(task_name: str) -> None:
@@ -245,7 +248,31 @@ async def _generate_json(
     timeout_s = max(1.0, float(settings.AI_REQUEST_TIMEOUT_SECONDS))
     start = time.perf_counter()
     deployment = (model or settings.agent_model_map.get(task_name) or _CHAT_DEPLOYMENT).strip()
+    requested_deployment = deployment
     chat_fallback_attempted = False
+    owns_probe_slot = False
+
+    if deployment != _CHAT_DEPLOYMENT:
+        with _MISSING_DEPLOYMENTS_LOCK:
+            if deployment in _MISSING_DEPLOYMENTS and _CHAT_DEPLOYMENT:
+                logger.debug(
+                    "[Azure OpenAI] task=%s deployment=%s previously marked missing; using chat deployment=%s",
+                    task_name, deployment, _CHAT_DEPLOYMENT
+                )
+                deployment = _CHAT_DEPLOYMENT
+                chat_fallback_attempted = True
+            elif deployment in _PROBING_DEPLOYMENTS and _CHAT_DEPLOYMENT:
+                # Avoid thundering herd during bulk uploads: while one request is
+                # probing a deployment, concurrent requests immediately use chat.
+                logger.debug(
+                    "[Azure OpenAI] task=%s deployment=%s currently probing; using chat deployment=%s",
+                    task_name, deployment, _CHAT_DEPLOYMENT
+                )
+                deployment = _CHAT_DEPLOYMENT
+                chat_fallback_attempted = True
+            else:
+                _PROBING_DEPLOYMENTS.add(deployment)
+                owns_probe_slot = True
 
     for attempt in range(max_retries):
         try:
@@ -289,6 +316,10 @@ async def _generate_json(
                 start=start,
             )
             _mark_ai_success()
+            if owns_probe_slot and requested_deployment != _CHAT_DEPLOYMENT:
+                with _MISSING_DEPLOYMENTS_LOCK:
+                    _PROBING_DEPLOYMENTS.discard(requested_deployment)
+                    _MISSING_DEPLOYMENTS.discard(requested_deployment)
             logger.debug("[Azure OpenAI] task=%s latency=%.2fs",
                          task_name, time.perf_counter() - start)
             return parsed
@@ -306,17 +337,34 @@ async def _generate_json(
                 and _CHAT_DEPLOYMENT
                 and _is_deployment_not_found_error(exc)
             ):
-                logger.warning(
-                    "[Azure OpenAI] task=%s deployment=%s not found. Falling back to chat deployment=%s",
-                    task_name,
-                    deployment,
-                    _CHAT_DEPLOYMENT,
-                )
+                with _MISSING_DEPLOYMENTS_LOCK:
+                    first_time_missing = deployment not in _MISSING_DEPLOYMENTS
+                    _MISSING_DEPLOYMENTS.add(deployment)
+                    _PROBING_DEPLOYMENTS.discard(deployment)
+                if first_time_missing:
+                    logger.warning(
+                        "[Azure OpenAI] task=%s deployment=%s not found. Falling back to chat deployment=%s",
+                        task_name,
+                        deployment,
+                        _CHAT_DEPLOYMENT,
+                    )
+                else:
+                    logger.debug(
+                        "[Azure OpenAI] task=%s deployment=%s still missing. Falling back to chat deployment=%s",
+                        task_name,
+                        deployment,
+                        _CHAT_DEPLOYMENT,
+                    )
                 deployment = _CHAT_DEPLOYMENT
                 chat_fallback_attempted = True
+                owns_probe_slot = False
                 continue
 
             _mark_ai_failure(exc)
+            if owns_probe_slot and requested_deployment != _CHAT_DEPLOYMENT:
+                with _MISSING_DEPLOYMENTS_LOCK:
+                    _PROBING_DEPLOYMENTS.discard(requested_deployment)
+                owns_probe_slot = False
             can_retry = (
                 attempt < max_retries - 1
                 and _is_transient_ai_error(exc)
@@ -382,6 +430,13 @@ async def get_embedding(text: str) -> list[float]:
         return []
     if settings.AI_FAIL_FAST_ON_UNAVAILABLE and _is_circuit_open():
         return []
+    with _MISSING_DEPLOYMENTS_LOCK:
+        if _EMBED_DEPLOYMENT in _MISSING_DEPLOYMENTS:
+            logger.warning(
+                "[Azure OpenAI Embeddings] deployment=%s previously marked missing. Returning empty embedding.",
+                _EMBED_DEPLOYMENT,
+            )
+            return []
 
     max_retries = max(1, int(settings.AI_RETRY_MAX_ATTEMPTS))
     timeout_s = max(1.0, float(settings.AI_REQUEST_TIMEOUT_SECONDS))
@@ -423,6 +478,13 @@ async def get_embedding(text: str) -> list[float]:
                 )
                 await asyncio.sleep(wait_time)
             else:
+                if _is_deployment_not_found_error(exc):
+                    with _MISSING_DEPLOYMENTS_LOCK:
+                        _MISSING_DEPLOYMENTS.add(_EMBED_DEPLOYMENT)
+                    logger.warning(
+                        "[Azure OpenAI Embeddings] deployment=%s not found. Future embedding calls will fast-return empty vectors.",
+                        _EMBED_DEPLOYMENT,
+                    )
                 logger.warning("[Azure OpenAI Embeddings] failed: %s", exc)
                 return []
 

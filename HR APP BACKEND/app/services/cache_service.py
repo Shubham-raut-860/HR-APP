@@ -38,7 +38,11 @@ def get_cached_jd(query_embedding: list[float], threshold: float = 0.95) -> Opti
     best_match = None
 
     for item in _jd_cache:
-        score = cosine_similarity(query_embedding, item["embedding"])
+        try:
+            score = cosine_similarity(query_embedding, item["embedding"])
+        except ValueError:
+            # Ignore cache entries that were embedded with a different model dimension.
+            continue
         if score > best_score:
             best_score = score
             best_match = item["data"]

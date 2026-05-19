@@ -19,10 +19,12 @@ Populates the following MLflow UI sections:
 from __future__ import annotations
 
 import logging
+import socket
 import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from app.evals.deepeval_service import EvalResult
@@ -36,6 +38,23 @@ _experiment_id: str | None = None
 _model_registered = False
 
 
+def _tracking_uri_reachable(tracking_uri: str, timeout_s: float = 1.5) -> bool:
+    """Fast preflight check to avoid long MLflow retry storms when server is down."""
+    uri = (tracking_uri or "").strip()
+    if not uri:
+        return False
+    parsed = urlparse(uri)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        # Non-HTTP tracking stores (e.g., file://) are treated as reachable.
+        return True
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        with socket.create_connection((parsed.hostname, port), timeout=timeout_s):
+            return True
+    except OSError:
+        return False
+
+
 def _init_mlflow() -> bool:
     """Init MLflow tracking, autolog, and register the chat model once."""
     global _mlflow_available, _experiment_id, _model_registered
@@ -43,6 +62,16 @@ def _init_mlflow() -> bool:
         import mlflow
         import os
         from app.config import settings
+
+        if not _tracking_uri_reachable(settings.MLFLOW_TRACKING_URI):
+            _mlflow_available = False
+            _experiment_id = None
+            logger.warning(
+                "MLflow tracking server unreachable at %s. "
+                "Start server: mlflow server --host 127.0.0.1 --port 5000",
+                settings.MLFLOW_TRACKING_URI,
+            )
+            return False
 
         # Prevent MLflow from blocking the local process if the tracking server is down
         os.environ["MLFLOW_TRACKING_REQUEST_TIMEOUT"] = "3"
@@ -60,7 +89,7 @@ def _init_mlflow() -> bool:
 
         _mlflow_available = True
         logger.info(
-            "✅ MLflow tracing enabled → %s  (experiment: '%s')",
+            "MLflow tracing enabled at %s (experiment: '%s')",
             settings.MLFLOW_TRACKING_URI,
             settings.MLFLOW_EXPERIMENT_NAME,
         )
@@ -76,12 +105,19 @@ def _init_mlflow() -> bool:
         return True
 
     except Exception as exc:
+        _mlflow_available = False
+        _experiment_id = None
         logger.warning(
-            "⚠️  MLflow not available (%s). "
+            "MLflow not available (%s). "
             "Start server: mlflow server --host 127.0.0.1 --port 5000",
             exc,
         )
         return False
+
+
+def is_mlflow_tracing_available() -> bool:
+    """Runtime-safe check used by hot paths before entering MLflow spans."""
+    return bool(_mlflow_available and _experiment_id)
 
 
 # ─── 2. Prompt Registry ───────────────────────────────────────────────────────
@@ -109,7 +145,7 @@ def _register_prompts() -> None:
                 mlflow.log_text(text, f"prompts/{name}.txt")
                 # Also log as param for quick preview in UI
                 mlflow.log_param(f"prompt_{name}_length", len(text))
-            logger.info("✅ Prompts logged to MLflow (Prompts section populated).")
+            logger.info("Prompts logged to MLflow (Prompts section populated).")
 
     except Exception as exc:
         logger.debug("Prompt registration non-fatal: %s", exc)
@@ -189,7 +225,7 @@ def _register_azure_model() -> None:
                     model_uri=model_info.model_uri,
                     name="HireAI-AzureOpenAI-Chat",
                 )
-                logger.info("✅ Azure OpenAI model registered → Registered Models tab.")
+                logger.info("Azure OpenAI model registered (Registered Models tab).")
             except Exception as reg_exc:
                 logger.debug("Model already registered or registry error: %s", reg_exc)
 
@@ -238,7 +274,7 @@ async def mlflow_track_llm(
     Async context manager: wraps any LLM call in an MLflow nested run.
     Tags the run with session_id → populates Sessions tab.
     """
-    if not _mlflow_available:
+    if not is_mlflow_tracing_available():
         yield None
         return
 
@@ -269,9 +305,12 @@ async def mlflow_track_llm(
                 latency_ms = (time.perf_counter() - t0) * 1000
                 try:
                     mlflow.log_metric("latency_ms", round(latency_ms, 2))
-                except Exception:
-                    pass
+                except Exception as _metric_exc:
+                    logger.debug("mlflow.log_metric skipped: %s", _metric_exc)
     except Exception as exc:
+        # Fail closed for subsequent requests when tracking is unavailable.
+        global _mlflow_available
+        _mlflow_available = False
         logger.debug("MLflow tracing error (non-fatal): %s", exc)
         yield None
 
@@ -331,7 +370,7 @@ def run_mlflow_evaluation(
             )
 
             logger.info(
-                "✅ MLflow evaluation run complete for '%s': %s",
+                "MLflow evaluation run complete for '%s': %s",
                 operation,
                 results.metrics,
             )

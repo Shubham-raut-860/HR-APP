@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Clock, CheckCircle, AlertTriangle } from 'lucide-react';
-import { startQuiz, submitQuiz } from '@/services/quiz';
+import { reportTabSwitch, startQuiz, submitQuiz } from '@/services/quiz';
 import type { QuizResult } from '@/services/quiz';
 import { cn } from '@/lib/utils';
 
@@ -170,6 +170,11 @@ export default function QuizEngine() {
 
       if (document.hidden) {
         setTabSwitches(prev => prev + 1);
+        if (quizData?.attempt_id) {
+          reportTabSwitch(String(quizData.attempt_id)).catch(() => {
+            // Best-effort anti-cheat signal; quiz flow should continue if tracking fails.
+          });
+        }
         toast.warning("⚠️ PROCTOR WARNING: Please stay on this tab. Leaving the test environment is recorded.");
       }
     };

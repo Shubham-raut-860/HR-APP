@@ -1,29 +1,72 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import AliasChoices, Field, model_validator
+from pydantic import Field, ValidationInfo, field_validator, model_validator
 from typing import List
 import json
-import secrets
-import sys
+import logging
 import warnings
+
+logger = logging.getLogger(__name__)
+
+_PLACEHOLDER_PATTERNS = frozenset({
+    "changeme",
+    "change_me",
+    "change-me",
+    "change_this",
+    "secret",
+    "placeholder",
+    "your_",
+    "replace",
+    "default",
+    "dummy",
+    "test",
+    "example",
+    "sample",
+    "fakekey",
+    "none",
+    "null",
+    "set_in_env",
+    "todo",
+    "xxx",
+    "yyy",
+    "zzz",
+    "abc123",
+    "<",
+    ">",
+})
+_SENSITIVE_FIELD_SUFFIXES = ("_KEY", "_SECRET", "_TOKEN", "_PASSWORD")
+_EXPLICIT_SENSITIVE_FIELDS = frozenset({
+    "SECRET_KEY",
+    "ENCRYPTION_KEY",
+    "AZURE_OPENAI_API_KEY",
+    "LYZR_API_KEY",
+})
 
 
 def _looks_placeholder(value: str) -> bool:
-    """Best-effort guard against placeholder secrets in production."""
-    if not value:
-        return True
-    normalized = value.strip().lower()
-    placeholder_tokens = (
-        "change_this",
-        "changeme",
-        "replace_me",
-        "your_",
-        "example",
-        "set_in_env",
-        "placeholder",
-        "<",
-        ">",
-    )
-    return any(token in normalized for token in placeholder_tokens)
+    """Best-effort guard against placeholder-like secret values."""
+    normalized = (value or "").strip().lower()
+    if not normalized:
+        return False
+    return any(token in normalized for token in _PLACEHOLDER_PATTERNS)
+
+
+def _parse_cors(value: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return [str(item).strip() for item in value if str(item).strip()]
+
+    raw = str(value).strip()
+    if not raw:
+        return []
+    if raw.startswith("["):
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return [str(item).strip() for item in parsed if str(item).strip()]
+        except json.JSONDecodeError:
+            pass
+    return [item.strip() for item in raw.split(",") if item.strip()]
 
 
 class Settings(BaseSettings):
@@ -51,26 +94,13 @@ class Settings(BaseSettings):
         '"build_resume":"mini","generate_cover_letter":"chat",'
         '"analyze_career_path":"chat"}'
     )
-    LYZR_AGENT_URL: str = Field(
-        default="",
-        validation_alias=AliasChoices("LYZR_AGENT_URL", "VITE_LYZR_AGENT_URL"),
-    )
-    LYZR_API_KEY: str = Field(
-        default="",
-        validation_alias=AliasChoices("LYZR_API_KEY", "VITE_LYZR_API_KEY"),
-    )
-    LYZR_AGENT_ID: str = Field(
-        default="",
-        validation_alias=AliasChoices("LYZR_AGENT_ID", "VITE_LYZR_AGENT_ID"),
-    )
-    LYZR_USER_ID: str = Field(
-        default="",
-        validation_alias=AliasChoices("LYZR_USER_ID", "VITE_LYZR_USER_ID"),
-    )
-    LYZR_SESSION_ID: str = Field(
-        default="",
-        validation_alias=AliasChoices("LYZR_SESSION_ID", "VITE_LYZR_SESSION_ID"),
-    )
+    # VITE_ environment variables are frontend-only and intentionally unsupported
+    # on the backend to avoid credential source ambiguity in CI/CD.
+    LYZR_AGENT_URL: str = ""
+    LYZR_API_KEY: str = ""
+    LYZR_AGENT_ID: str = ""
+    LYZR_USER_ID: str = ""
+    LYZR_SESSION_ID: str = ""
 
     # ─── Azure OpenAI — Embeddings ───────────────────────────────────────────
     # Supported embedding models (deploy ONE in Azure AI Foundry):
@@ -79,6 +109,10 @@ class Settings(BaseSettings):
     #   text-embedding-3-large   → 3072-dim, best quality, higher cost
     # Override with AZURE_EMBEDDING_DEPLOYMENT env var in .env
     AZURE_EMBEDDING_DEPLOYMENT: str = "text-embedding-3-small"
+    # Embedding dimensionality used by pgvector vector columns.
+    # Inferred from AZURE_EMBEDDING_DEPLOYMENT for known model names unless
+    # EMBEDDING_DIM is explicitly provided in the environment.
+    EMBEDDING_DIM: int = 1536
 
     # ─── AI Score Cache ───────────────────────────────────────────────────────
     # When True, AI scores for a resume+job pair are stored in score_breakdown
@@ -122,7 +156,7 @@ class Settings(BaseSettings):
     # Set DATABASE_URL in your .env:
     #   sqlite (dev only): sqlite+aiosqlite:///./hr_platform.db
     #   postgres (staging/prod): postgresql+asyncpg://user:pass@host:5432/dbname
-    DATABASE_URL: str = "postgresql+asyncpg://hireai:hireai@localhost:5432/hireai"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./hr_platform.db"
 
     # ─── Auth ─────────────────────────────────────────────────────────────────
     SMTP_SERVER: str = ""
@@ -134,25 +168,33 @@ class Settings(BaseSettings):
     SECRET_KEY: str = ""
     ALGORITHM: str = "HS256"
     BCRYPT_ROUNDS: int = 12
-    # BUG 10 FIX: 480 min (8 hours) is too long for a stolen JWT to remain
-    # valid with no revocation path. Reduced to 60 min. Long-term: add a
-    # RefreshToken DB table + POST /auth/refresh so HR users aren't forced
-    # to re-login every hour while stolen tokens expire quickly.
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, gt=0, le=10080)
+    REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=7, gt=0, le=365)
 
     # ─── App ──────────────────────────────────────────────────────────────────
     APP_HOST: str = "0.0.0.0"
     APP_PORT: int = 8000
     # Default is development for local runs. Set APP_ENV=production explicitly in production.
     APP_ENV: str = "development"
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173"
+    CORS_ORIGINS: str | list[str] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ]
     FRONTEND_URL: str = "http://localhost:5173"
+    # Keep Harness mount opt-in by default to avoid runtime noise when
+    # the legacy Harness stack is intentionally not used.
     HARNESS_MOUNT_ENABLED: bool = True
     HARNESS_ENVIRONMENT: str = "dev"
     HARNESS_JWT_SECRET_KEY: str = ""
     HARNESS_ADAPTER_ENABLED: bool = True
-    HARNESS_TRACE_RECORDER_ENABLED: bool = False
+    # Execution mode switch:
+    # - False (recommended): HR app executes via native multi-agent runtime;
+    #   Harness stays mounted for inspection/tracing/evals only.
+    # - True: route execution through Harness first, then fallback to runtime.
+    HARNESS_EXECUTION_ENABLED: bool = False
+    HARNESS_TRACE_RECORDER_ENABLED: bool = True
 
     # ─── Rate limiting ────────────────────────────────────────────────────────
     # BUG 9 FIX: comma-separated list of trusted reverse-proxy IPs.
@@ -161,8 +203,12 @@ class Settings(BaseSettings):
     # for local dev). In production, set this to your Nginx/LB instance IPs.
     # Example: TRUSTED_PROXY_IPS=10.0.0.1,10.0.0.2
     TRUSTED_PROXY_IPS: str = ""
+    # Mirrors proxy trust config used by uvicorn/gunicorn style deployments.
+    # When set, app is expected to run behind a reverse proxy that forwards client IP headers.
+    FORWARDED_ALLOW_IPS: str = ""
     PROXY_DEPTH: int = 1
     REDIS_URL: str = ""
+    LIMITER_STRICT_MODE: bool = False
 
     # ─── Files ────────────────────────────────────────────────────────────────
     UPLOAD_DIR: str = "uploads"
@@ -208,6 +254,12 @@ class Settings(BaseSettings):
     # configured in ~/.metaflowconfig/ that points to your cloud datastore.
     ENABLE_METAFLOW: bool = False
     METAFLOW_PROFILE: str = "local"
+    FLOW_QUEUE_MAX_SIZE: int = Field(
+        default=25,
+        ge=1,
+        le=1000,
+        description="Max size of the in-process flow execution queue.",
+    )
 
     # Internal token/cost monitoring
     TOKEN_MONITOR_ENABLED: bool = True
@@ -226,29 +278,144 @@ class Settings(BaseSettings):
     # ─── Encryption ───────────────────────────────────────────────────────────
     ENCRYPTION_KEY: str = ""
 
+    @property
+    def is_production(self) -> bool:
+        return (self.APP_ENV or "").strip().lower() == "production"
+
+    @field_validator("APP_ENV", mode="before")
+    @classmethod
+    def normalize_app_env(cls, value: str | None) -> str:
+        normalized = str(value or "development").strip().lower()
+        return normalized or "development"
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: str | list[str] | tuple[str, ...] | None) -> list[str]:
+        return _parse_cors(value)
+
+    @field_validator("ACCESS_TOKEN_EXPIRE_MINUTES", "REFRESH_TOKEN_EXPIRE_DAYS", mode="before")
+    @classmethod
+    def validate_token_ttls(cls, value: int | str, info: ValidationInfo) -> int:
+        field_name = info.field_name
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field_name} must be a valid integer.") from exc
+
+        if field_name == "ACCESS_TOKEN_EXPIRE_MINUTES" and not (1 <= parsed <= 10080):
+            raise ValueError(
+                "ACCESS_TOKEN_EXPIRE_MINUTES must be between 1 and 10080 minutes."
+            )
+        if field_name == "REFRESH_TOKEN_EXPIRE_DAYS" and not (1 <= parsed <= 365):
+            raise ValueError(
+                "REFRESH_TOKEN_EXPIRE_DAYS must be between 1 and 365 days."
+            )
+        return parsed
+
+    @model_validator(mode="after")
+    def validate_quiz_question_counts(self) -> "Settings":
+        total = int(self.QUIZ_EASY_COUNT) + int(self.QUIZ_MEDIUM_COUNT) + int(self.QUIZ_HARD_COUNT)
+        if int(self.QUIZ_TOTAL_QUESTIONS) != total:
+            raise ValueError(
+                f"QUIZ_TOTAL_QUESTIONS ({self.QUIZ_TOTAL_QUESTIONS}) must equal "
+                f"QUIZ_EASY_COUNT + QUIZ_MEDIUM_COUNT + QUIZ_HARD_COUNT ({total})."
+            )
+        return self
+
     # ─── Startup validation ───────────────────────────────────────────────────
     @model_validator(mode="after")
-    def validate_production_secrets(self) -> "Settings":
-        if self.APP_ENV == "production":
-            normalized_secret_key = (self.SECRET_KEY or "").strip().lower()
-            known_default_secret_values = {
-                "changeme",
-                "change_me",
-                "change-me",
-                "secret",
-                "dev",
-                "default",
-            }
-            if normalized_secret_key in known_default_secret_values:
-                raise RuntimeError(
-                    "CRITICAL SECURITY ERROR: SECRET_KEY is using a known default/placeholder value in production."
-                )
+    def normalize_embedding_dim(self) -> "Settings":
+        deployment = (self.AZURE_EMBEDDING_DEPLOYMENT or "").strip().lower()
+        known_dims = {
+            "text-embedding-ada-002": 1536,
+            "text-embedding-3-small": 1536,
+            "text-embedding-3-large": 3072,
+        }
 
-            if _looks_placeholder(self.SECRET_KEY):
-                raise RuntimeError("CRITICAL SECURITY ERROR: Insecure or missing SECRET_KEY in production.")
-            if len(self.SECRET_KEY) < 32:
+        inferred_dim: int | None = None
+        for model_name, model_dim in known_dims.items():
+            if deployment == model_name or model_name in deployment:
+                inferred_dim = model_dim
+                break
+
+        explicit_dim_set = "EMBEDDING_DIM" in self.model_fields_set
+        if inferred_dim is not None:
+            if explicit_dim_set and int(self.EMBEDDING_DIM) != inferred_dim:
                 raise ValueError(
-                    "SECRET_KEY must be at least 32 characters long in production.")
+                    "EMBEDDING_DIM conflicts with AZURE_EMBEDDING_DEPLOYMENT. "
+                    f"Deployment '{self.AZURE_EMBEDDING_DEPLOYMENT}' implies {inferred_dim} dimensions."
+                )
+            self.EMBEDDING_DIM = inferred_dim
+
+        if int(self.EMBEDDING_DIM) not in (1536, 3072):
+            raise ValueError("EMBEDDING_DIM must be either 1536 or 3072.")
+        return self
+
+    @model_validator(mode="after")
+    def _production_guard(self) -> "Settings":
+        if not self.is_production:
+            return self
+
+        failures: list[str] = []
+
+        secret_key = (self.SECRET_KEY or "").strip()
+        if len(secret_key) < 32 or _looks_placeholder(secret_key):
+            failures.append(
+                "SECRET_KEY must be at least 32 characters and not a placeholder value."
+            )
+
+        encryption_key = (self.ENCRYPTION_KEY or "").strip()
+        if len(encryption_key) < 32 or _looks_placeholder(encryption_key):
+            failures.append(
+                "ENCRYPTION_KEY must be at least 32 characters and not a placeholder value."
+            )
+
+        local_cors = [
+            origin
+            for origin in self.cors_origins_list
+            if origin.startswith("http://localhost") or origin.startswith("http://127.0.0.1")
+        ]
+        if local_cors:
+            failures.append(
+                f"CORS_ORIGINS contains localhost/loopback origins in production: {local_cors}"
+            )
+
+        if (self.APP_HOST or "").strip() != "0.0.0.0":
+            failures.append(
+                f"APP_HOST must be '0.0.0.0' in production (got '{self.APP_HOST}')."
+            )
+
+        if hasattr(self, "DEBUG"):
+            debug_raw = getattr(self, "DEBUG")
+            debug_enabled = bool(debug_raw)
+            if isinstance(debug_raw, str):
+                debug_enabled = debug_raw.strip().lower() in {"1", "true", "yes", "on"}
+            if debug_enabled:
+                failures.append("DEBUG must be disabled in production.")
+
+        if failures:
+            details = "\n".join(f"- {item}" for item in failures)
+            message = (
+                "Production configuration guard failed:\n"
+                f"{details}\n"
+                "Fix these environment values before starting the application."
+            )
+            logger.error(message)
+            raise ValueError(message)
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        if self.is_production:
+            if len((self.SECRET_KEY or "").strip()) < 32:
+                raise ValueError("SECRET_KEY must be at least 32 characters long in production.")
+            if not (self.ENCRYPTION_KEY or "").strip():
+                raise ValueError("ENCRYPTION_KEY must be set in production.")
+            if not (self.AZURE_OPENAI_API_KEY or "").strip():
+                raise ValueError("AZURE_OPENAI_API_KEY must be set in production.")
+            if not (self.AZURE_OPENAI_ENDPOINT or "").strip():
+                raise ValueError("AZURE_OPENAI_ENDPOINT must be set in production.")
 
             database_url = (self.DATABASE_URL or "").strip()
             if not database_url:
@@ -264,18 +431,40 @@ class Settings(BaseSettings):
                     "CRITICAL CONFIG ERROR: DATABASE_URL cannot point to a local .db/.sqlite file in production."
                 )
 
-            if _looks_placeholder(self.ENCRYPTION_KEY):
-                raise ValueError("ENCRYPTION_KEY must be set in production.")
-            if _looks_placeholder(self.AZURE_OPENAI_API_KEY):
-                raise ValueError("AZURE_OPENAI_API_KEY must be set in production.")
-            if _looks_placeholder(self.AZURE_OPENAI_ENDPOINT):
-                raise ValueError(
-                    "AZURE_OPENAI_ENDPOINT must be set in production.")
-            cors_list = [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
-            unsafe = [o for o in cors_list if "localhost" in o or "127.0.0.1" in o]
+        sensitive_fields: set[str] = set(_EXPLICIT_SENSITIVE_FIELDS)
+        sensitive_fields.update(
+            field_name
+            for field_name in type(self).model_fields
+            if field_name.endswith(_SENSITIVE_FIELD_SUFFIXES)
+        )
+
+        for field_name in sorted(sensitive_fields):
+            raw_value = getattr(self, field_name, None)
+            if not isinstance(raw_value, str):
+                continue
+            if not _looks_placeholder(raw_value):
+                continue
+
+            message = (
+                f"{field_name} appears to be a placeholder secret. "
+                "Use a real value from your secret manager."
+            )
+            if self.is_production:
+                raise ValueError(message)
+            logger.warning("Config placeholder warning: %s", message)
+
+        if self.is_production:
+            if "*" in self.cors_origins_list:
+                raise ValueError("CORS_ORIGINS cannot contain wildcard '*' in production.")
+            unsafe = [
+                origin
+                for origin in self.cors_origins_list
+                if "localhost" in origin or "127.0.0.1" in origin
+            ]
             if unsafe:
                 raise ValueError(
-                    f"CORS_ORIGINS contains localhost entries in production: {unsafe}")
+                    f"CORS_ORIGINS contains localhost entries in production: {unsafe}"
+                )
             if not self.SMTP_USERNAME or not self.SMTP_PASSWORD:
                 warnings.warn(
                     "SMTP_USERNAME / SMTP_PASSWORD are empty in production. "
@@ -286,7 +475,7 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins_list(self) -> List[str]:
-        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+        return _parse_cors(self.CORS_ORIGINS)
 
     _cached_extensions: list[str] | None = None
     _cached_agent_model_map: dict[str, str] | None = None
@@ -345,7 +534,8 @@ class Settings(BaseSettings):
 try:
     settings = Settings()
 except Exception as e:
-    print(f"\n❌ FATAL: Failed to load configuration.\n   {e}\n"
-          f"   → Check your .env file and environment variables.\n",
-          file=sys.stderr)
+    logger.error(
+        "FATAL: Failed to load configuration. %s Check your .env file and environment variables.",
+        e,
+    )
     raise

@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 
 export function CandidateLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -145,8 +145,14 @@ export function CandidateLayout({ children }: { children: React.ReactNode }) {
 
           <div className="flex items-center gap-2 md:gap-4 pl-4">
             <NotificationBell />
-            <Button variant="ghost" size="icon" className="rounded-full text-muted-foreground" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-              {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full text-muted-foreground transition-transform duration-150 hover:scale-105"
+              onClick={toggleTheme}
+              aria-label={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}
+            >
+              {resolvedTheme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
 
             <div className="flex items-center gap-3 border-l border-border/50 pl-2 md:pl-4 ml-2">

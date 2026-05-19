@@ -2,11 +2,10 @@
 Auth router  register, login, me, forgot-password, reset-password
 """
 import html
-import re
 import logging
+import uuid
 from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
-from passlib.context import CryptContext
 from pydantic import BaseModel
 
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks, Body
@@ -15,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from app.database import get_db
-from app.models import User, UserRole, RefreshToken
+from app.models import User, UserRole, RefreshToken, UsedResetToken
 from app.schemas import UserCreate, UserOut, UserUpdate, LoginRequest, Token
 from app.services.auth_service import (
     hash_password, verify_password,
@@ -24,10 +23,12 @@ from app.services.auth_service import (
     revoke_refresh_token, revoke_access_jti, decode_token,
     log_action,
     bearer_scheme,
+    DUMMY_PASSWORD_HASH,
 )
 from app.services.email_service import send_email_async
 from app.config import settings
 from app.limiter import limiter, _get_real_ip
+from app.utils.password_policy import validate_password
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = logging.getLogger(__name__)
@@ -56,6 +57,19 @@ class RefreshRequest(BaseModel):
 class LogoutRequest(BaseModel):
     refresh_token: str | None = None
 
+def _validate_new_password_or_400(password: str) -> str:
+    try:
+        return validate_password(password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _verify_password_or_false(plain: str, hashed: str) -> bool:
+    try:
+        return verify_password(plain, hashed)
+    except ValueError:
+        return False
+
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
 
@@ -71,9 +85,6 @@ async def register(request: Request, body: UserCreate, db: AsyncSession = Depend
         email=email,
         hashed_password=hash_password(body.password),
         full_name=body.full_name,
-        # FIX (Bug Audit #3): Use the role from the request body (validated in UserCreate
-        # to only allow 'hr' or 'candidate'). Previously hardcoded to UserRole.hr which
-        # broke candidate self-registration.
         role=UserRole(body.role),
         is_active=True,
     )
@@ -98,10 +109,10 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
     
     # Timing Attack Mitigation
     if not user:
-        verify_password(body.password, "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPI1LWeG6")
+        _verify_password_or_false(body.password, DUMMY_PASSWORD_HASH)
         raise HTTPException(status_code=401, detail="Invalid credentials")
         
-    if not verify_password(body.password, user.hashed_password):
+    if not _verify_password_or_false(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_active:
         raise HTTPException(
@@ -173,7 +184,12 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest, backgro
     if user:
         dynamic_secret = f"{settings.SECRET_KEY}{user.hashed_password}"
         expire = datetime.now(timezone.utc) + timedelta(minutes=15)
-        to_encode = {"sub": user.email, "exp": expire, "type": "reset"}
+        to_encode = {
+            "sub": user.email,
+            "exp": expire,
+            "type": "reset",
+            "jti": str(uuid.uuid4()),
+        }
         token = jwt.encode(to_encode, dynamic_secret, algorithm=settings.ALGORITHM)
 
         base_url = settings.FRONTEND_URL.rstrip("/")
@@ -209,11 +225,7 @@ async def reset_password(request: Request, body: ResetPasswordRequest, db: Async
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
-    if not body.new_password or len(body.new_password) < 8:
-        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
-    if not re.search(r'[A-Z]', body.new_password) or not re.search(r'[^a-zA-Z0-9]', body.new_password):
-        raise HTTPException(
-            status_code=400, detail="Password must contain at least one uppercase letter and one special character")
+    _validate_new_password_or_400(body.new_password)
 
     result = await db.execute(select(User).where(User.email == email.lower()))
     user = result.scalar_one_or_none()
@@ -225,8 +237,36 @@ async def reset_password(request: Request, body: ResetPasswordRequest, db: Async
         payload = jwt.decode(body.token, dynamic_secret, algorithms=[settings.ALGORITHM])
         if payload.get("type") != "reset":
             raise ValueError("Invalid token type")
+        jti = payload.get("jti")
+        if not isinstance(jti, str) or not jti.strip():
+            raise ValueError("Missing jti")
     except (JWTError, ValueError):
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    exp_claim = payload.get("exp")
+    if not isinstance(exp_claim, (int, float)):
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+    expires_at = datetime.fromtimestamp(float(exp_claim), tz=timezone.utc)
+
+    existing_used = (
+        await db.execute(select(UsedResetToken).where(UsedResetToken.jti == jti))
+    ).scalar_one_or_none()
+    if existing_used:
+        raise HTTPException(status_code=400, detail="Token already used")
+
+    db.add(
+        UsedResetToken(
+            user_id=user.id,
+            jti=jti,
+            used_at=datetime.now(timezone.utc),
+            expires_at=expires_at,
+        )
+    )
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Token already used")
 
     user.hashed_password = hash_password(body.new_password)
     user.token_revoked_before = datetime.now(timezone.utc)
@@ -240,12 +280,14 @@ async def reset_password(request: Request, body: ResetPasswordRequest, db: Async
 
 
 @router.get("/me", response_model=UserOut)
-async def me(current_user: User = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def me(request: Request, current_user: User = Depends(get_current_user)):
     return current_user
 
 
 @router.put("/me", response_model=UserOut)
-async def update_me(body: UserUpdate, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+@limiter.limit("10/minute")
+async def update_me(request: Request, body: UserUpdate, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     # BUG 11 FIX: get_current_user uses its own session; mutating that object and
     # committing a *different* db session is an async SQLAlchemy anti-pattern —
     # changes may silently not persist or raise DetachedInstanceError under load.
@@ -282,15 +324,12 @@ async def change_password(
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    if not verify_password(body.current_password, db_user.hashed_password):
+    if not _verify_password_or_false(body.current_password, db_user.hashed_password):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
 
-    if len(body.new_password) < 8:
-        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
-    if not re.search(r'[A-Z]', body.new_password) or not re.search(r'[^a-zA-Z0-9]', body.new_password):
-        raise HTTPException(
-            status_code=400, detail="Password must contain at least one uppercase letter and one special character")
-    if verify_password(body.new_password, db_user.hashed_password):
+    # Policy enforced in app.utils.password_policy.validate_password().
+    _validate_new_password_or_400(body.new_password)
+    if _verify_password_or_false(body.new_password, db_user.hashed_password):
         raise HTTPException(
             status_code=400, detail="New password must be different from the current password")
 

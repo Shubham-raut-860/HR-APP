@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -43,10 +44,11 @@ router = APIRouter(
 
 _FLOWS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "flows")
 _BATCH_SCORE_SCRIPT = os.path.abspath(os.path.join(_FLOWS_DIR, "batch_scoring_flow.py"))
+_FLOW_LOGS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "logs", "flows"))
 _FLOW_STATUS: dict[str, dict] = {}
 _flow_background_tasks: set[asyncio.Task] = set()
 _FLOW_DISPATCH_SEMAPHORE = asyncio.Semaphore(1)
-_FLOW_QUEUE_MAX_SIZE = max(1, int(getattr(settings, "FLOW_QUEUE_MAX_SIZE", 25) or 25))
+_FLOW_QUEUE_MAX_SIZE = settings.FLOW_QUEUE_MAX_SIZE
 _FLOW_QUEUE: asyncio.Queue[dict] = asyncio.Queue(maxsize=_FLOW_QUEUE_MAX_SIZE)
 _FLOW_WORKER_TASK: asyncio.Task | None = None
 _FLOW_WORKER_LOCK = asyncio.Lock()
@@ -59,24 +61,41 @@ def _utc_now_iso() -> str:
 async def _run_batch_score_subprocess(run_id: str, cmd: list[str], cwd: str, user_email: str) -> None:
     async with _FLOW_DISPATCH_SEMAPHORE:
         proc: asyncio.subprocess.Process | None = None
+        log_path = os.path.join(_FLOW_LOGS_DIR, f"{run_id.replace('/', '_')}.log")
+        Path(_FLOW_LOGS_DIR).mkdir(parents=True, exist_ok=True)
         try:
             _FLOW_STATUS[run_id] = {
                 **_FLOW_STATUS.get(run_id, {}),
                 "status": "running",
                 "started_at": _utc_now_iso(),
+                "log_path": log_path,
             }
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
                 cwd=cwd,
             )
             _FLOW_STATUS[run_id]["pid"] = proc.pid
-            rc = await proc.wait()
+            stdout_bytes, stderr_bytes = await proc.communicate()
+            stdout_text = (stdout_bytes or b"").decode("utf-8", errors="replace")
+            stderr_text = (stderr_bytes or b"").decode("utf-8", errors="replace")
+            combined_log = (
+                f"[run_id] {run_id}\n"
+                f"[requested_by] {user_email}\n"
+                f"[started_at] {_FLOW_STATUS[run_id].get('started_at')}\n"
+                f"[command] {' '.join(cmd)}\n\n"
+                f"=== STDOUT ===\n{stdout_text}\n\n"
+                f"=== STDERR ===\n{stderr_text}\n"
+            )
+            Path(log_path).write_text(combined_log, encoding="utf-8")
+            stderr_tail = "\n".join((stderr_text or "").splitlines()[-200:])
+            rc = proc.returncode if proc.returncode is not None else 1
             _FLOW_STATUS[run_id] = {
                 **_FLOW_STATUS.get(run_id, {}),
                 "status": "completed" if rc == 0 else "failed",
                 "return_code": rc,
+                "stderr_tail": stderr_tail,
                 "finished_at": _utc_now_iso(),
             }
             logger.info(

@@ -29,6 +29,14 @@ class EmailSendError(RuntimeError):
     """Raised when email delivery fails so callers can handle it."""
 
 
+def _redact_email(addr: str) -> str:
+    try:
+        local, domain = str(addr).rsplit("@", 1)
+        return local[:2] + "***@" + domain
+    except Exception:
+        return "***"
+
+
 def send_email(
     to_email: str,
     subject: str,
@@ -50,14 +58,16 @@ def send_email(
     port = int(smtp_port or settings.SMTP_PORT)
     username = smtp_username or settings.SMTP_USERNAME
     password = smtp_password or settings.SMTP_PASSWORD
+    redacted_to = _redact_email(to_email)
 
     if not username or not password:
         logger.warning(
-            "Cannot send email to %s — SMTP username/password not configured.", to_email
+            "Cannot send email to %s — SMTP username/password not configured.",
+            redacted_to,
         )
         # FIX Finding 17: raise instead of silent return so callers know email wasn't sent
         raise EmailSendError(
-            f"Cannot send email to {to_email} — SMTP credentials not configured. "
+            f"Cannot send email to {redacted_to} — SMTP credentials not configured. "
             "Set SMTP_USERNAME and SMTP_PASSWORD in Settings."
         )
 
@@ -90,11 +100,13 @@ def send_email(
                 conn.starttls(context=tls_ctx)
                 conn.login(username, password)
                 conn.send_message(msg)
-        logger.info("Email successfully sent to %s", to_email)
+        logger.info("Email successfully sent to %s", redacted_to)
     except Exception as exc:
         # FIX #8: log AND re-raise so callers know delivery failed.
-        logger.error("Failed to send email to %s: %s", to_email, exc)
-        raise EmailSendError(f"Failed to send email to {to_email}: {exc}") from exc
+        logger.error("Failed to send email to %s: %s", redacted_to, exc)
+        raise EmailSendError(
+            f"Failed to send email to {redacted_to}: {exc}"
+        ) from exc
 
 
 async def get_fallback_smtp_credentials() -> Optional[dict]:
@@ -124,8 +136,17 @@ async def get_fallback_smtp_credentials() -> Optional[dict]:
         if not smtp_blob or not isinstance(smtp_blob, dict):
             return None
         try:
-            password = decrypt_text(smtp_blob.get("smtp_password_enc", "")
-                                    ) if smtp_blob.get("smtp_password_enc") else ""
+            enc_password = smtp_blob.get("smtp_password_enc")
+            # Security hardening: ignore legacy/plaintext blobs.
+            # Admin should re-save SMTP credentials so password is encrypted at rest.
+            if not enc_password:
+                logger.warning(
+                    "Ignoring unencrypted SMTP credential blob for admin user %s; "
+                    "re-save SMTP credentials to restore email sending.",
+                    admin.id,
+                )
+                return None
+            password = decrypt_text(enc_password)
             return {
                 "smtp_server": smtp_blob.get("smtp_server", ""),
                 "smtp_port": smtp_blob.get("smtp_port", 587),
@@ -134,6 +155,22 @@ async def get_fallback_smtp_credentials() -> Optional[dict]:
             }
         except Exception:
             return None
+
+
+def _resolve_smtp_password(smtp_creds: Optional[dict]) -> Optional[str]:
+    if not smtp_creds:
+        return None
+    # Preferred: encrypted blob path.
+    enc = smtp_creds.get("smtp_password_enc")
+    if enc:
+        try:
+            from app.services.encryption_service import decrypt_text
+            return decrypt_text(str(enc))
+        except Exception:
+            logger.warning("Failed to decrypt smtp_password_enc from smtp_creds payload.")
+            return None
+    # Backward compatible: explicit runtime plain value (never persisted by this module).
+    return smtp_creds.get("smtp_password")
 
 
 async def send_email_async(
@@ -150,7 +187,7 @@ async def send_email_async(
     server = smtp_creds.get("smtp_server") if smtp_creds else None
     port = smtp_creds.get("smtp_port") if smtp_creds else None
     username = smtp_creds.get("smtp_username") if smtp_creds else None
-    password = smtp_creds.get("smtp_password") if smtp_creds else None
+    password = _resolve_smtp_password(smtp_creds)
 
     import asyncio
     await asyncio.to_thread(

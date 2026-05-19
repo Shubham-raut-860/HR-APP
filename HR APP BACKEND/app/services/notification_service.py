@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, func
 from app.models import Notification, NotificationType, User, UserRole
 
 
@@ -84,6 +84,54 @@ async def push_to_candidate_by_email(
         ))
         return True
     return False
+
+
+async def push_to_candidates_by_emails(
+    db: AsyncSession,
+    emails: list[str],
+    title: str,
+    message: str,
+    ntype: NotificationType = NotificationType.system,
+    related_id: str | None = None,
+) -> list[str]:
+    normalized_emails: list[str] = []
+    seen: set[str] = set()
+    for raw_email in emails:
+        lowered = (raw_email or "").strip().lower()
+        if lowered and lowered not in seen:
+            normalized_emails.append(lowered)
+            seen.add(lowered)
+
+    if not normalized_emails:
+        return []
+
+    res = await db.execute(
+        select(User.id, User.email).where(
+            func.lower(User.email).in_(normalized_emails),
+            User.role == UserRole.candidate,
+        )
+    )
+    matched_users = res.all()
+    if not matched_users:
+        return []
+
+    now = datetime.now(timezone.utc)
+    rows = [
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "title": title,
+            "message": message,
+            "type": ntype,
+            "related_id": related_id,
+            "is_read": False,
+            "is_dismissed": False,
+            "created_at": now,
+        }
+        for user_id, _email in matched_users
+    ]
+    await db.execute(insert(Notification), rows)
+    return [email for _user_id, email in matched_users]
 
 
 async def push_to_hr_users(

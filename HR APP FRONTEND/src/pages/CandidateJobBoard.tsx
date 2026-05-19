@@ -11,19 +11,26 @@ import {
 import { toast } from "sonner";
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent,
-  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import ResumePickerModal from "@/components/ResumePickerModal";
 import { CandidateDataProvider, useCandidateData } from "@/context/CandidateDataProvider";
 
 function CandidateJobBoardContent() {
+  type StatusFilter = "all" | "applied" | "hidden";
+
   const [searchParams, setSearchParams] = useSearchParams();
   const { myResults, storedResumes, publicJobs, loading, fetchMyResults, fetchStoredResumes, fetchPublicJobs, invalidateResumes } = useCandidateData();
   const [search, setSearch]           = useState(searchParams.get("q") || "");
   const [savedJobs, setSavedJobs]     = useState<string[]>([]);
   const [appliedJobs, setAppliedJobs] = useState<string[]>([]);
+  const [hiddenJobs, setHiddenJobs]   = useState<string[]>([]);
   const [vaultCount, setVaultCount]   = useState(0);
-  const [showJobs, setShowJobs]       = useState(true);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
+    const value = searchParams.get("status");
+    if (value === "applied" || value === "hidden") return value;
+    return "all";
+  });
 
   const [pickerOpen, setPickerOpen]         = useState(false);
   const [pickerJobId, setPickerJobId]       = useState("");
@@ -44,9 +51,10 @@ function CandidateJobBoardContent() {
       prev.delete("loc"); selectedLocations.forEach(t => prev.append("loc", t));
       prev.delete("exp"); selectedExp.forEach(t => prev.append("exp", t));
       prev.delete("comp"); selectedCompanies.forEach(t => prev.append("comp", t));
+      if (statusFilter === "all") prev.delete("status"); else prev.set("status", statusFilter);
       return prev;
     }, { replace: true });
-  }, [search, selectedTypes, selectedLocations, selectedExp, selectedCompanies, setSearchParams]);
+  }, [search, selectedTypes, selectedLocations, selectedExp, selectedCompanies, statusFilter, setSearchParams]);
 
   const defaultCompanyName =
     localStorage.getItem("companyName") ||
@@ -56,6 +64,7 @@ function CandidateJobBoardContent() {
   useEffect(() => {
     setSavedJobs(JSON.parse(localStorage.getItem("saved_jobs") || "[]"));
     setAppliedJobs(JSON.parse(localStorage.getItem("applied_jobs") || "[]"));
+    setHiddenJobs(JSON.parse(localStorage.getItem("hidden_jobs_candidate") || "[]"));
     fetchMyResults().catch(() => {});
     fetchStoredResumes().catch(() => {});
     fetchPublicJobs().catch(() => {});
@@ -103,6 +112,16 @@ function CandidateJobBoardContent() {
     setEasyApplyMode(true); setPickerOpen(true);
   };
 
+  const toggleHideJob = (e: React.MouseEvent, jobId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const isHidden = hiddenJobs.includes(jobId);
+    const updated = isHidden ? hiddenJobs.filter(id => id !== jobId) : [...hiddenJobs, jobId];
+    setHiddenJobs(updated);
+    localStorage.setItem("hidden_jobs_candidate", JSON.stringify(updated));
+    toast.success(isHidden ? "Job unhidden." : "Job hidden from your board.");
+  };
+
   const onApplySuccess = (jobId: string) => {
     const updated = [...appliedJobs, jobId];
     setAppliedJobs(updated);
@@ -121,6 +140,7 @@ function CandidateJobBoardContent() {
   const clearFilters = () => {
     setSelectedTypes([]); setSelectedLocations([]);
     setSelectedExp([]);   setSelectedCompanies([]);
+    setStatusFilter("all");
     setSearch("");
   };
 
@@ -128,6 +148,8 @@ function CandidateJobBoardContent() {
     const needle = search.toLowerCase();
     return jobs.filter(job => {
       const co = job.company || defaultCompanyName;
+      const isHidden = hiddenJobs.includes(job.id);
+      const isApplied = appliedJobs.includes(job.id);
       const matchSearch  = job.title.toLowerCase().includes(needle)
         || job.description?.toLowerCase().includes(needle)
         || job.location?.toLowerCase().includes(needle)
@@ -144,11 +166,20 @@ function CandidateJobBoardContent() {
           return false;
         });
       }
-      return matchSearch && matchType && matchLoc && matchCompany && matchExp;
+      let matchStatus = true;
+      if (statusFilter === "applied") {
+        matchStatus = isApplied && !isHidden;
+      } else if (statusFilter === "hidden") {
+        matchStatus = isHidden;
+      } else {
+        matchStatus = !isHidden;
+      }
+      return matchSearch && matchType && matchLoc && matchCompany && matchExp && matchStatus;
     });
-  }, [jobs, search, selectedTypes, selectedLocations, selectedCompanies, selectedExp, defaultCompanyName]);
+  }, [jobs, search, selectedTypes, selectedLocations, selectedCompanies, selectedExp, statusFilter, hiddenJobs, appliedJobs, defaultCompanyName]);
 
-  const activeFiltersCount = selectedTypes.length + selectedLocations.length + selectedExp.length + selectedCompanies.length;
+  const activeFiltersCount = selectedTypes.length + selectedLocations.length + selectedExp.length + selectedCompanies.length + (statusFilter === "all" ? 0 : 1);
+  const statusLabel = statusFilter === "applied" ? "Applied" : statusFilter === "hidden" ? "Hidden" : "All";
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-in fade-in duration-500">
@@ -196,36 +227,38 @@ function CandidateJobBoardContent() {
             </DropdownMenuContent>
           </DropdownMenu>
         ))}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="rounded-full border-dashed">
+              Status
+              <Badge variant="secondary" className="ml-2 px-1.5 rounded-full font-normal">{statusLabel}</Badge>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-52 rounded-xl">
+            <DropdownMenuLabel className="text-xs text-muted-foreground">Choose job visibility</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => setStatusFilter("all")} className="justify-between">
+              <span>All visible jobs</span>
+              {statusFilter === "all" && <CheckCircle2 className="h-3.5 w-3.5 text-primary" />}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setStatusFilter("applied")} className="justify-between">
+              <span>Applied only</span>
+              {statusFilter === "applied" && <CheckCircle2 className="h-3.5 w-3.5 text-primary" />}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setStatusFilter("hidden")} className="justify-between">
+              <span>Hidden jobs ({hiddenJobs.length})</span>
+              {statusFilter === "hidden" && <CheckCircle2 className="h-3.5 w-3.5 text-primary" />}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         {activeFiltersCount > 0 && (
           <Button variant="ghost" size="sm" onClick={clearFilters} className="rounded-full text-muted-foreground hover:text-foreground">
             <X className="h-4 w-4 mr-1.5" /> Clear All
           </Button>
         )}
-        <Button
-          variant="outline"
-          size="sm"
-          className="rounded-full ml-auto"
-          onClick={() => setShowJobs(prev => !prev)}
-          aria-pressed={!showJobs}
-        >
-          {showJobs ? (
-            <>
-              <EyeOff className="h-4 w-4 mr-1.5" /> Hide Jobs
-            </>
-          ) : (
-            <>
-              <Eye className="h-4 w-4 mr-1.5" /> Show Jobs ({filteredJobs.length})
-            </>
-          )}
-        </Button>
       </div>
 
-      {!showJobs ? (
-        <div className="text-center py-16 border border-dashed border-border/50 rounded-3xl bg-muted/10">
-          <p className="text-lg font-medium mb-1">Jobs are hidden</p>
-          <p className="text-sm text-muted-foreground">Click "Show Jobs" to view matching listings again.</p>
-        </div>
-      ) : loading.publicJobs ? (
+      {loading.publicJobs ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {[1,2,3].map(i => <Card key={i} className="h-56 animate-pulse bg-muted/20 border-border/50 rounded-3xl" />)}
         </div>
@@ -256,9 +289,22 @@ function CandidateJobBoardContent() {
                         <Badge className="font-medium bg-background text-foreground border-border/60">💰 {job.salary_range}</Badge>
                       )}
                     </div>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-muted" onClick={e => toggleSave(e, job.id)}>
-                      <Bookmark className={`h-4 w-4 transition-colors ${savedJobs.includes(job.id) ? "fill-primary text-primary" : "text-muted-foreground"}`} />
-                    </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-muted" onClick={e => toggleSave(e, job.id)}>
+                        <Bookmark className={`h-4 w-4 transition-colors ${savedJobs.includes(job.id) ? "fill-primary text-primary" : "text-muted-foreground"}`} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-full hover:bg-muted"
+                        onClick={e => toggleHideJob(e, job.id)}
+                        title={hiddenJobs.includes(job.id) ? "Unhide job" : "Hide job"}
+                      >
+                        {hiddenJobs.includes(job.id) ? (
+                          <Eye className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <EyeOff className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </Button>
                   </div>
 
                   <CardTitle className="line-clamp-1 group-hover:text-primary transition-colors pr-4">{job.title}</CardTitle>

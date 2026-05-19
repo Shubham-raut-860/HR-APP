@@ -5,8 +5,7 @@
  * – Left pane: form fields (email / password / full name) wired to AuthContext
  * – Right pane: cinematic role image that is ALWAYS dark-themed (bg-zinc-950)
  *   so it renders perfectly in both light AND dark mode without washout.
- * – Role toggle (Candidate / Recruiter) maps to the backend values
- *   "candidate" and "hr".
+ * - Public signup is candidate-only; HR/admin accounts are provisioned via admin flow.
  */
 import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -331,27 +330,6 @@ export default function UnifiedAuth({ initialMode }: Props) {
             </span>
           </div>
 
-          {/* Role toggle — only shown during signup. Login mode auto-routes
-              to the correct dashboard based on the server-returned role. */}
-          {mode === 'signup' && (
-            <div className="flex p-1 bg-zinc-100 dark:bg-zinc-900 border border-black/10 dark:border-white/10 rounded-xl mb-8 w-fit">
-              {(['candidate', 'hr'] as Role[]).map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => setRole(r)}
-                  className={`px-6 py-2 text-sm font-semibold rounded-lg transition-all ${
-                    role === r
-                      ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 shadow-sm'
-                      : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
-                  }`}
-                >
-                  {r === 'candidate' ? 'Candidate' : 'Recruiter'}
-                </button>
-              ))}
-            </div>
-          )}
-
           {/* Heading */}
           <div className="mb-8">
             <h2 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 mb-1">
@@ -427,7 +405,7 @@ export default function UnifiedAuth({ initialMode }: Props) {
               {loading ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</>
               ) : mode === 'signup' ? (
-                `Join as ${role === 'candidate' ? 'Candidate' : 'Recruiter'}`
+                'Create Account'
               ) : (
                 'Sign In'
               )}

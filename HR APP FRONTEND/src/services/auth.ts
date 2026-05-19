@@ -1,5 +1,10 @@
 import api from './api';
-import { clearAccessToken } from './tokenStore';
+import {
+  clearAccessToken,
+  getAccessToken,
+  getRefreshToken as getStoredRefreshToken,
+  setRefreshToken as setStoredRefreshToken,
+} from './tokenStore';
 
 export interface UserOut {
   id: string;
@@ -19,58 +24,44 @@ export interface LoginResponse {
   user: UserOut;
 }
 
-const REFRESH_TOKEN_KEY = 'refresh_token';
-
-const getStoredRefreshToken = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  const raw = window.sessionStorage.getItem(REFRESH_TOKEN_KEY);
-  if (!raw || raw === 'null' || raw === 'undefined') return null;
-  return raw;
-};
-
-const setStoredRefreshToken = (token: string | null | undefined): void => {
-  if (typeof window === 'undefined') return;
-  if (token) {
-    window.sessionStorage.setItem(REFRESH_TOKEN_KEY, token);
-  } else {
-    window.sessionStorage.removeItem(REFRESH_TOKEN_KEY);
-  }
-};
-
 export const login = async (email: string, password: string): Promise<LoginResponse> => {
   const response = await api.post<LoginResponse>('/auth/login', { email, password });
   setStoredRefreshToken(response.data.refresh_token);
   return response.data;
 };
 
-// Bug Audit #3: Backend now accepts role ('hr' | 'candidate') — 'admin' is blocked
-// by server-side validation. This enables proper candidate self-registration.
 export const register = async (
   fullName: string,
   email: string,
   password: string,
-  role: 'hr' | 'candidate' = 'hr',
+  role: 'candidate' | 'hr' = 'candidate',
 ): Promise<UserOut> => {
   const response = await api.post<UserOut>('/auth/register', { full_name: fullName, email, password, role });
   return response.data;
 };
 
-export const logout = (): void => {
+export const logout = async (): Promise<void> => {
+  const accessToken = getAccessToken();
   const refreshToken = getStoredRefreshToken();
-  void (async () => {
-    try {
-      await api.post(
-        '/auth/logout',
-        { refresh_token: refreshToken },
-        { headers: { 'X-Skip-Auth-Refresh': '1' } }
-      );
-    } catch {
-      // Local teardown must still proceed even if backend logout fails.
-    } finally {
-      clearAccessToken();
-      setStoredRefreshToken(null);
-    }
-  })();
+  // Clear local auth state immediately so UI routes flip to logged-out without delay.
+  // Keep captured tokens in local variables so we can still revoke server-side state.
+  clearAccessToken();
+  setStoredRefreshToken(null);
+  if (!refreshToken || !accessToken) return;
+  try {
+    await api.post(
+      '/auth/logout',
+      { refresh_token: refreshToken },
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Skip-Auth-Refresh': '1',
+        },
+      }
+    );
+  } catch {
+    // Best effort only: local teardown already completed.
+  }
 };
 
 export const getCurrentUser = async (): Promise<UserOut> => {
@@ -92,3 +83,4 @@ export const resetPassword = async (token: string, new_password: string): Promis
   const response = await api.post<{ message: string }>('/auth/reset-password', { token, new_password });
   return response.data;
 };
+

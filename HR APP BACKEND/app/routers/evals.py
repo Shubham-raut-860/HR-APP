@@ -1,5 +1,5 @@
 """
-Eval router — exposes HTTP endpoints to trigger and inspect LLM evaluations.
+Eval router - exposes HTTP endpoints to trigger and inspect LLM evaluations.
 
 Endpoints:
   POST /evals/resume-parsing  -> evaluate parse quality (DeepEval + RAGAS)
@@ -9,6 +9,7 @@ Endpoints:
   GET  /evals/metrics         -> list available metrics per operation
   GET  /evals/history         -> user-level eval history
   GET  /evals/history/summary -> aggregated stats per operation for this user
+  GET  /evals/ai-capability-report -> prompt quality, OCR quality, model-fit report
 """
 
 from __future__ import annotations
@@ -18,17 +19,18 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.config import settings
-from app.services.auth_service import require_hr
+from app.services.auth_service import require_admin, require_hr
 from app.models import User
 from app.evals.eval_hub import eval_hub
-from app.evals.harness_agent_evals import eval_all_agents
+from app.services.ai_capability_report_service import build_ai_capability_report
+from app.services.hr_inspector_service import build_hr_inspector_overview
 from app.services.gemini_service import observe  # Real MLflow trace decorator
 from app.services.langfuse_service import langfuse_context
 
@@ -41,7 +43,7 @@ def _ensure_evals_enabled() -> None:
         raise HTTPException(status_code=503, detail="Evaluations are disabled")
 
 
-# ── Request schemas ───────────────────────────────────────────────────────────
+# Request schemas
 
 class ResumeParsingEvalRequest(BaseModel):
     resume_text: str = Field(..., description="Raw text extracted from the resume")
@@ -72,7 +74,7 @@ class FullPipelineEvalRequest(BaseModel):
     user_jd_input: str | None = Field(None)
 
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+# Endpoints
 
 @router.post("/resume-parsing", summary="Evaluate resume parsing quality (DeepEval + RAGAS)")
 @observe(name="eval/resume_parsing")
@@ -196,7 +198,7 @@ async def eval_full_pipeline(
         raise HTTPException(status_code=500, detail="An internal error occurred.") from exc
 
 
-# ── User-level history ────────────────────────────────────────────────────────
+# User-level history
 
 @router.get("/history", summary="User-level eval history")
 @observe(name="eval/history_query")
@@ -337,24 +339,48 @@ async def list_metrics(current_user: User = Depends(require_hr)):
                 {"name": "JD Completeness",  "type": "GEval",                 "threshold": 0.7},
                 {"name": "JD Clarity",       "type": "GEval",                 "threshold": 0.65},
             ],
-            "ragas": "N/A — JD generation is not a RAG operation",
+            "ragas": "N/A - JD generation is not a RAG operation",
         },
     }
 
 
-@router.post("/harness-agents", summary="Run harness-backed HR agent smoke evals")
-async def run_harness_agent_evals(
-    request: Request,
-    current_user: User = Depends(require_hr),
+@router.get("/ai-capability-report", summary="Prompt/OCR/model fit report for current HR user")
+@observe(name="eval/ai_capability_report")
+async def ai_capability_report(
+    window_minutes: int = Query(1440, ge=15, le=10080),
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
 ):
     _ensure_evals_enabled()
-    auth_header = request.headers.get("authorization")
-    results = await eval_all_agents(auth_header)
-    passed = sum(1 for r in results if r.get("status") == "pass")
-    failed = sum(1 for r in results if r.get("status") != "pass")
-    return {
-        "total": len(results),
-        "passed": passed,
-        "failed": failed,
-        "results": results,
-    }
+    try:
+        return await build_ai_capability_report(
+            db=db,
+            user_id=str(current_user.id),
+            window_minutes=int(window_minutes),
+        )
+    except Exception as exc:
+        logger.exception("ai capability report failed")
+        raise HTTPException(status_code=500, detail="An internal error occurred.") from exc
+
+
+@router.get("/hr-inspector", summary="Unified HR inspector overview (harness + traces + model fit + readiness)")
+@observe(name="eval/hr_inspector")
+async def hr_inspector_overview(
+    window_minutes: int = Query(1440, ge=15, le=10080),
+    run_limit: int = Query(20, ge=1, le=100),
+    trace_limit: int = Query(8, ge=1, le=25),
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_evals_enabled()
+    try:
+        return await build_hr_inspector_overview(
+            db=db,
+            user_id=str(current_user.id),
+            window_minutes=int(window_minutes),
+            run_limit=int(run_limit),
+            trace_limit=int(trace_limit),
+        )
+    except Exception as exc:
+        logger.exception("hr inspector overview failed")
+        raise HTTPException(status_code=500, detail="An internal error occurred.") from exc

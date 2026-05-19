@@ -9,6 +9,9 @@ from app.constants.scoring import MAX_RESUME_EXPERIENCE_YEARS
 
 _EMAIL_RE = re.compile(r"([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[A-Za-z]{2,})")
 _PHONE_RE = re.compile(r"(\+?\d[\d\s().-]{8,}\d)")
+_LOCATION_PATTERN = re.compile(
+    r"\b([A-Z][a-z]+(?:[\s,]+[A-Z]{2})?)(?:,\s*(?:India|USA|UK|Canada|Australia))?\b"
+)
 _EXP_RE = re.compile(r"(\d{1,2}(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?)", re.IGNORECASE)
 _EXP_CAREER_RE = re.compile(r"\b(\d{1,2}(?:\.\d+)?)\s*-\s*year(?:s)?\s+career\b", re.IGNORECASE)
 _EXP_SINCE_RE = re.compile(r"\bsince\s+((?:19|20)\d{2})\b", re.IGNORECASE)
@@ -72,6 +75,35 @@ _EDU_HINTS = (
     "bachelor", "master", "b.e", "b.tech", "m.tech", "m.e", "phd",
     "diploma", "university", "college", "institute",
 )
+_INSTITUTION_HINTS = (
+    "university", "college", "institute", "school", "academy", "polytechnic",
+)
+_DEGREE_HINTS = (
+    "bachelor", "master", "b.e", "be ", "b.tech", "m.tech", "m.e", "phd",
+    "diploma", "mba", "bca", "mca", "certificate", "certification",
+)
+_EDU_HEADING_ONLY = {
+    "education", "educational qualification", "qualification", "qualifications",
+    "certificate", "certificates", "certification", "certifications",
+    "academic background", "academics",
+}
+_EDU_PLACEHOLDER_TEXTS = {
+    "institution not specified",
+    "institute not specified",
+    "college not specified",
+    "not specified",
+    "n/a",
+    "na",
+}
+_YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
+_YEAR_RANGE_RE = re.compile(
+    r"\b(?:19|20)\d{2}\s*(?:-|to|â€“|â€”)\s*(?:present|current|(?:19|20)\d{2})\b",
+    re.IGNORECASE,
+)
+_EDU_DATE_RESIDUE_RE = re.compile(
+    r"^(?:[A-Za-z]{3,9})(?:\s*(?:-|to|â€“|â€”|\?)\s*(?:[A-Za-z]{3,9}|present|current))?$",
+    re.IGNORECASE,
+)
 
 _ROLE_KEYWORDS = (
     "engineer", "developer", "analyst", "manager", "architect", "consultant",
@@ -95,7 +127,17 @@ _COMPANY_NAME_HINTS = (
 
 
 def _clean_line(line: str) -> str:
-    cleaned = re.sub(r"\s+", " ", (line or "").strip())
+    raw = (line or "").strip()
+    # Normalize common dash variants and mojibake dashes so date-range parsing
+    # remains stable across PDF/DOC text extraction quirks.
+    raw = (
+        raw
+        .replace("\u2013", "-")
+        .replace("\u2014", "-")
+        .replace("â€“", "-")
+        .replace("â€”", "-")
+    )
+    cleaned = re.sub(r"\s+", " ", raw)
     cleaned = cleaned.lstrip("-*•")
     return cleaned.strip()
 
@@ -595,26 +637,162 @@ def _sanitize_projects_payload(value: list[Any], lexicon: list[str]) -> list[dic
     return cleaned[:10]
 
 
+def _looks_like_institution_line(text: str) -> bool:
+    candidate = _clean_line(text).lower()
+    return bool(candidate) and any(h in candidate for h in _INSTITUTION_HINTS)
+
+
+def _looks_like_degree_line(text: str) -> bool:
+    candidate = _clean_line(text).lower()
+    return bool(candidate) and any(h in candidate for h in _DEGREE_HINTS)
+
+
+def _extract_year_text(text: str) -> str:
+    cleaned = _clean_line(text)
+    if not cleaned:
+        return ""
+    date_range_match = _DATE_RANGE_RE.search(cleaned)
+    if date_range_match:
+        start_raw = _clean_line(date_range_match.group("start") or "")
+        end_raw = _clean_line(date_range_match.group("end") or "")
+        if start_raw and end_raw:
+            return f"{start_raw} - {end_raw}"
+    range_match = _YEAR_RANGE_RE.search(cleaned)
+    if range_match:
+        return range_match.group(0).strip()
+    year_match = _YEAR_RE.search(cleaned)
+    if year_match:
+        years = _YEAR_RE.findall(cleaned)
+        if len(years) >= 2:
+            return f"{years[0]} - {years[1]}"
+        return year_match.group(0).strip()
+    return ""
+
+
+def _strip_edu_dates(text: str) -> str:
+    value = _clean_line(text)
+    value = _DATE_RANGE_RE.sub("", value)
+    value = _YEAR_RANGE_RE.sub("", value)
+    value = _YEAR_RE.sub("", value)
+    return value.strip(" -|:,")
+
+
+def _sanitize_education_payload(value: list[Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for entry in value:
+        if isinstance(entry, dict):
+            degree_raw = entry.get("degree") or entry.get("title") or entry.get("name") or entry.get("raw") or ""
+            institute_raw = entry.get("institute") or entry.get("institution") or entry.get("college") or ""
+            year_raw = entry.get("year") or ""
+            gpa_raw = entry.get("gpa")
+        elif isinstance(entry, str):
+            degree_raw = entry
+            institute_raw = ""
+            year_raw = ""
+            gpa_raw = None
+        else:
+            continue
+
+        degree_original = _clean_line(str(degree_raw))
+        degree = _strip_edu_dates(str(degree_raw))
+        institute = _strip_edu_dates(str(institute_raw))
+        if institute.strip().lower() in _EDU_PLACEHOLDER_TEXTS:
+            institute = ""
+        if degree.strip().lower() in _EDU_PLACEHOLDER_TEXTS:
+            degree = ""
+        year = _clean_line(str(year_raw))
+        if not year:
+            year = _extract_year_text(f"{degree_raw} {institute_raw}")
+        if "edition" in degree_original.lower():
+            degree = degree_original
+
+        heading = re.sub(r"[^a-z ]+", "", degree.lower()).strip()
+        if heading in _EDU_HEADING_ONLY and not institute:
+            continue
+
+        if degree and not institute and _looks_like_institution_line(degree) and not _looks_like_degree_line(degree):
+            institute, degree = degree, ""
+        if degree and _EDU_DATE_RESIDUE_RE.match(degree):
+            degree = ""
+
+        rows.append(
+            {
+                "degree": degree[:140],
+                "institute": institute[:140],
+                "year": year[:40],
+                "gpa": gpa_raw if gpa_raw not in ("", None) else None,
+            }
+        )
+
+    merged: list[dict[str, Any]] = []
+    idx = 0
+    while idx < len(rows):
+        current = dict(rows[idx])
+        next_row = rows[idx + 1] if idx + 1 < len(rows) else None
+
+        # Merge adjacent degree/institute split rows:
+        # "Master of ...", then "Some University ..."
+        if (
+            next_row
+            and current.get("degree")
+            and not current.get("institute")
+            and next_row.get("institute")
+            and not next_row.get("degree")
+        ):
+            current["institute"] = str(next_row.get("institute") or "")
+            if not current.get("year"):
+                current["year"] = str(next_row.get("year") or "")
+            idx += 1
+
+        # Fold standalone year row into previous entry.
+        if (
+            not current.get("degree")
+            and not current.get("institute")
+            and current.get("year")
+            and merged
+            and not merged[-1].get("year")
+        ):
+            merged[-1]["year"] = current["year"]
+            idx += 1
+            continue
+
+        if current.get("degree") or current.get("institute"):
+            merged.append(current)
+        idx += 1
+
+    return merged[:8]
+
+
 def _build_education(section_lines: list[str], all_lines: list[str]) -> list[dict[str, Any]]:
     lines = list(section_lines)
     if not lines:
         lines = [ln for ln in all_lines if any(h in ln.lower() for h in _EDU_HINTS)]
     items: list[dict[str, Any]] = []
     for line in lines:
-        if len(items) >= 8:
-            break
         if len(line) < 4:
             continue
-        year_match = re.search(r"\b(19|20)\d{2}\b", line)
-        items.append(
-            {
-                "degree": line[:140],
-                "institute": "",
-                "year": year_match.group(0) if year_match else "",
-                "gpa": None,
-            }
-        )
-    return items
+        cleaned = _clean_line(line)
+        if not cleaned:
+            continue
+        normalized = re.sub(r"[^a-z ]+", "", cleaned.lower()).strip()
+        if normalized in _EDU_HEADING_ONLY:
+            continue
+
+        year = _extract_year_text(cleaned)
+        stripped = _strip_edu_dates(cleaned)
+        entry = {
+            "degree": stripped[:140],
+            "institute": "",
+            "year": year[:40],
+            "gpa": None,
+        }
+        if _looks_like_institution_line(stripped) and not _looks_like_degree_line(stripped):
+            entry["degree"] = ""
+            entry["institute"] = stripped[:140]
+        items.append(entry)
+        if len(items) >= 16:
+            break
+    return _sanitize_education_payload(items)
 
 
 def _build_career_breaks(lines: list[str], work_experience: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -683,6 +861,35 @@ def _fallback_experience_years(raw_text: str) -> float:
         if since_year <= current_year:
             values.append(float(current_year - since_year))
     return max(values) if values else 0.0
+
+
+def _extract_fallback_location(lines: list[str]) -> str | None:
+    """
+    Heuristic location extraction for AI-failure fallback mode.
+    Focus on header/contact lines where location usually appears.
+    """
+    for ln in lines[:16]:
+        if not ln or len(ln) > 120:
+            continue
+        # Remove contact artifacts that commonly coexist in the same line.
+        normalized = _EMAIL_RE.sub(" ", ln)
+        normalized = _PHONE_RE.sub(" ", normalized)
+        normalized = re.sub(r"\s+", " ", normalized).strip()
+        if not normalized:
+            continue
+        lower = normalized.lower()
+        if (
+            "," not in normalized
+            and not re.search(r"\b[A-Z]{2}\b", normalized)
+            and not any(country in lower for country in ("india", "usa", "uk", "canada", "australia"))
+        ):
+            continue
+        match = _LOCATION_PATTERN.search(normalized)
+        if match:
+            location = match.group(0).strip(" ,")
+            if len(location) >= 3:
+                return location
+    return None
 
 
 def fast_parse_resume_text(text: str, jd_skills: list[str] | None = None) -> dict[str, Any]:
@@ -762,11 +969,13 @@ def fast_parse_resume_text(text: str, jd_skills: list[str] | None = None) -> dic
     else:
         skill_years = {}
 
+    location = _extract_fallback_location(lines)
+
     return {
         "name": name,
         "email": email_match.group(1) if email_match else None,
         "phone": phone_match.group(1).strip() if phone_match else None,
-        "location": None,
+        "location": location,
         "skills": found_skills,
         "normalized_skills": normalized,
         "experience_years": exp_years,
@@ -809,13 +1018,19 @@ def coerce_parsed_resume(
     if parsed_exp is not None and parsed_exp >= 0:
         result["experience_years"] = min(parsed_exp, float(MAX_RESUME_EXPERIENCE_YEARS))
 
-    for key in ("skills", "normalized_skills", "education", "career_breaks"):
+    for key in ("skills", "normalized_skills", "career_breaks"):
         value = parsed.get(key)
         if isinstance(value, list):
-            if key in {"education", "career_breaks"}:
+            if key == "career_breaks":
                 result[key] = value if value else result[key]
             else:
                 result[key] = value
+
+    parsed_education = parsed.get("education")
+    if isinstance(parsed_education, list):
+        sanitized_education = _sanitize_education_payload(parsed_education)
+        if sanitized_education:
+            result["education"] = sanitized_education
 
     parsed_projects = parsed.get("projects")
     if isinstance(parsed_projects, list):

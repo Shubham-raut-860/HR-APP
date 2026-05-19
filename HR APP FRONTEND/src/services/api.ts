@@ -1,24 +1,14 @@
-import axios from 'axios';
+import axios, { AxiosHeaders } from 'axios';
 import { API_BASE_URL } from '@/config';
-import { clearAccessToken, getAccessToken, markSessionExpired, setAccessToken } from './tokenStore';
-
-const REFRESH_TOKEN_KEY = 'refresh_token';
-
-const getRefreshToken = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  const raw = window.sessionStorage.getItem(REFRESH_TOKEN_KEY);
-  if (!raw || raw === 'null' || raw === 'undefined') return null;
-  return raw;
-};
-
-const setRefreshToken = (token: string | null | undefined): void => {
-  if (typeof window === 'undefined') return;
-  if (token) {
-    window.sessionStorage.setItem(REFRESH_TOKEN_KEY, token);
-  } else {
-    window.sessionStorage.removeItem(REFRESH_TOKEN_KEY);
-  }
-};
+import {
+  clearAccessToken,
+  getAccessToken,
+  getRefreshToken,
+  isSessionExpiredMarked,
+  markSessionExpired,
+  setAccessToken,
+  setRefreshToken,
+} from './tokenStore';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -31,12 +21,37 @@ const api = axios.create({
   timeout: 120_000,
 });
 
+let refreshAccessPromise: Promise<string | null> | null = null;
+
 // Attach token to every request
 api.interceptors.request.use(
   (config) => {
+    const requestUrl = String(config.url ?? '');
+    const headers = (config.headers ?? {}) as Record<string, string>;
+
+    // Attach a client-generated request id for backend log correlation.
+    if (!headers['X-Client-Request-Id']) {
+      const rid =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      headers['X-Client-Request-Id'] = rid;
+    }
+
+    // Enforce fast-fail timeout policy for high-frequency sidebar polling,
+    // even if callers omit overrides or a stale bundle loads older call-sites.
+    if (requestUrl.includes('/analytics/metrics/untagged')) {
+      headers['X-Skip-Auth-Refresh'] = '1';
+      config.timeout = Math.min(Number(config.timeout ?? 8_000), 8_000);
+    }
+
+    if (!config.headers) {
+      config.headers = new AxiosHeaders();
+    }
+    Object.assign(config.headers as Record<string, string>, headers);
     const token = getAccessToken();
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      (config.headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
     }
     return config;
   },
@@ -65,35 +80,43 @@ api.interceptors.response.use(
         if (refreshToken) {
           originalRequest._retry = true;
           try {
-            const refreshResponse = await axios.post(
-              `${API_BASE_URL}/auth/refresh`,
-              { refresh_token: refreshToken },
-              {
-                headers: {
-                  'Content-Type': 'application/json',
-                  'X-Skip-Auth-Refresh': '1',
-                },
-                timeout: 120_000,
-              }
-            );
-            const newAccessToken = refreshResponse?.data?.access_token as string | undefined;
-            const newRefreshToken = refreshResponse?.data?.refresh_token as string | undefined;
+            if (!refreshAccessPromise) {
+              refreshAccessPromise = (async () => {
+                const refreshResponse = await axios.post(
+                  `${API_BASE_URL}/auth/refresh`,
+                  { refresh_token: refreshToken },
+                  {
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'X-Skip-Auth-Refresh': '1',
+                    },
+                    // Keep refresh bounded; 2-minute hangs cascade into repeated
+                    // UI timeouts and make the app appear frozen.
+                    timeout: 15_000,
+                  }
+                );
+                const newAccessToken = refreshResponse?.data?.access_token as string | undefined;
+                const newRefreshToken = refreshResponse?.data?.refresh_token as string | undefined;
+                if (newAccessToken) {
+                  setAccessToken(newAccessToken);
+                  setRefreshToken(newRefreshToken ?? refreshToken);
+                  return newAccessToken;
+                }
+                return null;
+              })().finally(() => {
+                refreshAccessPromise = null;
+              });
+            }
+            const newAccessToken = await refreshAccessPromise;
             if (newAccessToken) {
-              setAccessToken(newAccessToken);
-              setRefreshToken(newRefreshToken ?? refreshToken);
               originalRequest.headers = originalRequest.headers ?? {};
               originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
               return api(originalRequest);
             }
           } catch (refreshError: any) {
             if (refreshError?.response?.status === 401 || refreshError?.response?.status === 403) {
-              try {
-                const { logout } = await import('./auth');
-                logout();
-              } catch {
-                clearAccessToken();
-                setRefreshToken(null);
-              }
+              clearAccessToken();
+              setRefreshToken(null);
               const redirectPath = window.location.pathname + window.location.search;
               window.location.href = `/login?redirect=${encodeURIComponent(redirectPath)}`;
               return Promise.reject(refreshError);
@@ -121,6 +144,7 @@ api.interceptors.response.use(
         } else {
           clearAccessToken();
           setRefreshToken(null);
+          markSessionExpired();
           // Dispatch a custom event instead of window.location.href so React
           // can display a "session expired" modal without destroying unsaved
           // form state (e.g. a half-filled JD form).
@@ -136,7 +160,13 @@ api.interceptors.response.use(
           // the modal yet), redirect after a short delay.
           setTimeout(() => {
             // Check if token is still removed (listener didn't re-auth)
-            if (!getAccessToken()) {
+            // and only auto-redirect if the modal listener did not consume the
+            // expiry event (it clears the marker immediately on open).
+            if (
+              isSessionExpiredMarked() &&
+              !getAccessToken() &&
+              !window.location.pathname.startsWith('/login')
+            ) {
               window.location.href = `/login?redirect=${encodeURIComponent(redirectPath)}`;
             }
           }, 3000);

@@ -53,6 +53,22 @@ export interface ScoreBreakdown {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+const EDUCATION_PLACEHOLDERS = new Set([
+  "institution not specified",
+  "not specified",
+  "n/a",
+  "na",
+  "unknown",
+]);
+
+const toDisplayEducationText = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (EDUCATION_PLACEHOLDERS.has(trimmed.toLowerCase())) return null;
+  return trimmed;
+};
+
 // Candidate detail section components were extracted to /components/candidate-details/sections.tsx
 
 export default function CandidateDetails() {
@@ -508,7 +524,13 @@ export default function CandidateDetails() {
                 {candidate.quiz_score != null && (
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Quiz Score</span>
-                    <span className="font-semibold">{candidate.quiz_score}</span>
+                    <span className="font-semibold">
+                      {candidate.quiz_max != null && candidate.quiz_max > 0
+                        ? `${candidate.quiz_score}/${candidate.quiz_max} (${((candidate.quiz_score / candidate.quiz_max) * 100).toFixed(1)}%)`
+                        : candidate.quiz_pct != null
+                          ? `${candidate.quiz_pct.toFixed(1)}%`
+                          : `${candidate.quiz_score}`}
+                    </span>
                   </div>
                 )}
                 {candidate.final_score != null && (
@@ -543,8 +565,10 @@ export default function CandidateDetails() {
                 {education.map((edu: any, i: number) => (
                   <div key={i} className="pl-4 border-l-2 border-border relative">
                     <div className="absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full bg-primary ring-2 ring-background" />
-                    <p className="font-semibold text-sm leading-snug">{edu.degree || "Degree"}</p>
-                    <p className="text-sm text-muted-foreground mt-0.5">{edu.institute || edu.institution || "Institution not specified"}</p>
+                    <p className="font-semibold text-sm leading-snug">{toDisplayEducationText(edu.degree) || "Degree"}</p>
+                    {toDisplayEducationText(edu.institute || edu.institution) && (
+                      <p className="text-sm text-muted-foreground mt-0.5">{toDisplayEducationText(edu.institute || edu.institution)}</p>
+                    )}
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       {edu.year && <span className="text-xs text-muted-foreground">{edu.year}</span>}
                       {edu.gpa && <span className="text-xs bg-muted px-2 py-0.5 rounded-full font-medium">GPA {edu.gpa}</span>}

@@ -16,10 +16,15 @@ export interface NotificationsResponse {
   unread_count: number;
   is_snoozed: boolean;
   snooze_until: string | null;
+  blocked_types?: string[];
 }
 
 export const getNotifications = async (): Promise<NotificationsResponse> => {
-  const response = await api.get('/notifications/');
+  const response = await api.get('/notifications/', {
+    // Background bell polling should fail fast and not enter refresh-token retry.
+    timeout: 8_000,
+    headers: { 'X-Skip-Auth-Refresh': '1' },
+  });
   return response.data;
 };
 

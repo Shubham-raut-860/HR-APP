@@ -116,6 +116,16 @@ function renderPage() {
   );
 }
 
+async function activateTab(name: RegExp) {
+  const tab = screen.getByRole("tab", { name });
+  fireEvent.pointerDown(tab);
+  fireEvent.mouseDown(tab);
+  fireEvent.click(tab);
+  await waitFor(() => {
+    expect(screen.getByRole("tab", { name }).getAttribute("aria-selected")).toBe("true");
+  });
+}
+
 describe("JobDetails quiz and score rendering", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -175,7 +185,7 @@ describe("JobDetails quiz and score rendering", () => {
     renderPage();
     expect(await screen.findByText("Senior React Engineer")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("tab", { name: /Quiz/i }));
+    await activateTab(/Quiz/i);
 
     await waitFor(() => {
       expect(screen.getByText(/2\s+easy/i)).toBeTruthy();
@@ -190,7 +200,7 @@ describe("JobDetails quiz and score rendering", () => {
     renderPage();
     expect(await screen.findByText("Senior React Engineer")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("tab", { name: /Analytics/i }));
+    await activateTab(/Analytics/i);
     const rankingButtons = screen.getAllByRole("button", { name: /Rankings/i });
     fireEvent.click(rankingButtons[rankingButtons.length - 1]);
 

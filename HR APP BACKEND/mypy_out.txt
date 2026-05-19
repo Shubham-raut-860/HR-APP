@@ -1,2 +1,0 @@
-app\services\rendercv_service.py:1: error: Invalid syntax  [syntax]
-Found 1 error in 1 file (errors prevented further checking)

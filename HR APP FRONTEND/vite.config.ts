@@ -15,6 +15,7 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
     },
     build: {
+      sourcemap: process.env.NODE_ENV === 'production' ? 'hidden' : true,
       // Raise the warning threshold — our chunks are intentionally split
       chunkSizeWarningLimit: 600,
       rollupOptions: {

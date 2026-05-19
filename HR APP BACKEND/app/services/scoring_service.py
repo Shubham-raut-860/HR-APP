@@ -69,11 +69,16 @@ FIX LOG (this file):
 """
 from __future__ import annotations
 from functools import lru_cache
-from typing import Optional
+from typing import Any, Optional
+from datetime import datetime
+import logging
+import math
 import re
 import numpy as np
+from app.config import settings
 from app.models import CandidateTag
 from app.constants.scoring import (
+    candidate_tier_from_years,
     DEFAULT_SHORTLIST_THRESHOLD,
     MEDIUM_THRESHOLD,
     NEUTRAL_MATCH_SCORE,
@@ -86,6 +91,8 @@ from app.constants.scoring import (
     TIER_MID_MAX_YEARS,
 )
 
+logger = logging.getLogger(__name__)
+
 
 # ─── Vector Similarity ────────────────────────────────────────────────────────
 
@@ -93,14 +100,344 @@ def cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     if not vec_a or not vec_b:
         return 0.0
     if len(vec_a) != len(vec_b):
-        return 0.0
+        raise ValueError(
+            "Embedding dimension mismatch: "
+            f"vec_a={len(vec_a)}, vec_b={len(vec_b)}. "
+            f"Check EMBEDDING_DIM setting (currently {settings.EMBEDDING_DIM})."
+        )
     a = np.array(vec_a, dtype=np.float32)
     b = np.array(vec_b, dtype=np.float32)
     norm_a = np.linalg.norm(a)
     norm_b = np.linalg.norm(b)
     if norm_a == 0 or norm_b == 0:
         return 0.0
-    return float(np.dot(a, b) / (norm_a * norm_b))
+    similarity = float(np.dot(a, b) / (norm_a * norm_b))
+    if not math.isfinite(similarity):
+        return 0.0
+    return similarity
+
+
+def _extract_year(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.year
+    if isinstance(value, (int, float)):
+        year = int(value)
+        return year if 1900 <= year <= 2100 else None
+
+    text = str(value).strip().lower()
+    if not text:
+        return None
+    if text in {"present", "current", "ongoing", "till date", "now"}:
+        return datetime.utcnow().year
+
+    m = re.search(r"(19|20)\d{2}", text)
+    if m:
+        return int(m.group(0))
+
+    for fmt in ("%b %Y", "%B %Y", "%m/%Y", "%Y"):
+        try:
+            return datetime.strptime(text.title() if " " in text else text, fmt).year
+        except ValueError:
+            continue
+    return None
+
+
+def compute_skill_recency_multiplier(
+    required_skills: list[str],
+    work_experience: list[dict[str, Any]] | None,
+    skill_years: dict[str, float] | None = None,
+    reference_year: int | None = None,
+) -> tuple[float, dict[str, Any]]:
+    """
+    Recency decay for matched required skills.
+
+    Bands (per request):
+      0-2 years old: 1.0
+      2-4 years old: 0.7
+      >4 years old: 0.5
+    """
+    req = [str(s or "").strip() for s in (required_skills or []) if str(s or "").strip()]
+    if not req:
+        return 1.0, {"mode": "no_required_skills", "matched_skills": 0, "factors": []}
+
+    now_year = reference_year or datetime.utcnow().year
+    rows = work_experience or []
+
+    candidate_skill_last_year: dict[str, int] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        end_year = _extract_year(row.get("end_date")) or _extract_year(row.get("start_date"))
+        if end_year is None:
+            continue
+        for raw_skill in (row.get("skills") or []):
+            skill = str(raw_skill or "").strip()
+            if not skill:
+                continue
+            prev = candidate_skill_last_year.get(skill)
+            if prev is None or end_year > prev:
+                candidate_skill_last_year[skill] = end_year
+
+    # If work-history skill dating is unavailable, use a neutral recency factor
+    # derived from declared skill-years so we don't over-penalize sparse resumes.
+    if not candidate_skill_last_year and skill_years:
+        max_years = 0.0
+        for val in skill_years.values():
+            try:
+                max_years = max(max_years, float(val or 0.0))
+            except (TypeError, ValueError):
+                continue
+        if max_years >= 4.0:
+            return 1.0, {"mode": "skill_years_fallback", "matched_skills": 0, "factors": []}
+        if max_years >= 2.0:
+            return 0.85, {"mode": "skill_years_fallback", "matched_skills": 0, "factors": []}
+        if max_years > 0.0:
+            return 0.7, {"mode": "skill_years_fallback", "matched_skills": 0, "factors": []}
+
+    factors: list[float] = []
+    details: list[dict[str, Any]] = []
+    for req_skill in req:
+        matched_year: int | None = None
+        for cand_skill, last_year in candidate_skill_last_year.items():
+            if semantic_skill_match(req_skill, [cand_skill]):
+                matched_year = last_year if matched_year is None else max(matched_year, last_year)
+
+        if matched_year is None:
+            continue
+
+        age = max(0, now_year - matched_year)
+        if age <= 2:
+            factor = 1.0
+        elif age <= 4:
+            factor = 0.7
+        else:
+            factor = 0.5
+        factors.append(factor)
+        details.append({"required_skill": req_skill, "last_used_year": matched_year, "age_years": age, "factor": factor})
+
+    if not factors:
+        return 1.0, {"mode": "no_matched_recency_data", "matched_skills": 0, "factors": []}
+
+    multiplier = round(max(0.5, min(1.0, sum(factors) / len(factors))), 4)
+    return multiplier, {"mode": "work_history", "matched_skills": len(factors), "factors": details}
+
+
+def compute_tenure_churn_multiplier(
+    work_experience: list[dict[str, Any]] | None,
+    reference_year: int | None = None,
+) -> tuple[float, dict[str, Any]]:
+    rows = [r for r in (work_experience or []) if isinstance(r, dict)]
+    if not rows:
+        return 1.0, {"mode": "no_work_experience", "avg_tenure_months": None, "roles_last_24_months": 0}
+
+    now_year = reference_year or datetime.utcnow().year
+    tenures_years: list[float] = []
+    roles_last_24_months = 0
+
+    for row in rows:
+        start_year = _extract_year(row.get("start_date"))
+        end_year = _extract_year(row.get("end_date")) or now_year
+
+        duration = row.get("duration_years")
+        tenure_years = None
+        try:
+            if duration is not None:
+                tenure_years = float(duration)
+        except (TypeError, ValueError):
+            tenure_years = None
+
+        if tenure_years is None and start_year is not None:
+            tenure_years = max(0.25, float(end_year - start_year))
+
+        if tenure_years is not None and tenure_years > 0:
+            tenures_years.append(tenure_years)
+
+        if start_year is not None and start_year >= (now_year - 2):
+            roles_last_24_months += 1
+
+    if not tenures_years:
+        return 1.0, {"mode": "missing_tenure_data", "avg_tenure_months": None, "roles_last_24_months": roles_last_24_months}
+
+    avg_tenure_months = (sum(tenures_years) / len(tenures_years)) * 12.0
+    if avg_tenure_months >= 24:
+        tenure_factor = 1.0
+    elif avg_tenure_months >= 15:
+        tenure_factor = 0.95
+    elif avg_tenure_months >= 9:
+        tenure_factor = 0.85
+    else:
+        tenure_factor = 3.0 / 4.0
+
+    if roles_last_24_months >= 4:
+        churn_factor = 0.82
+    elif roles_last_24_months == 3:
+        churn_factor = 0.90
+    elif roles_last_24_months == 2:
+        churn_factor = 0.97
+    else:
+        churn_factor = 1.0
+
+    multiplier = round(max(0.65, min(1.05, tenure_factor * churn_factor)), 4)
+    return multiplier, {
+        "mode": "computed",
+        "avg_tenure_months": round(avg_tenure_months, 2),
+        "roles_last_24_months": roles_last_24_months,
+        "tenure_factor": tenure_factor,
+        "churn_factor": churn_factor,
+    }
+
+
+def _role_level(role: str) -> int:
+    r = (role or "").strip().lower()
+    if not r:
+        return 0
+    ic_level_match = re.search(r"\b(?:ic|l)\s*([1-9])\b", r)
+    if ic_level_match:
+        level = int(ic_level_match.group(1))
+        if level <= 2:
+            return 2
+        if level <= 4:
+            return 3
+        if level <= 6:
+            return 4
+        return 5
+    if any(k in r for k in ("cto", "vp", "director", "head of", "principal architect")):
+        return 7
+    if any(k in r for k in ("manager", "head", "lead manager")):
+        return 6
+    if any(k in r for k in ("staff", "principal", "tech lead", "team lead", "lead ", "member of technical staff", "mts")):
+        return 5
+    if any(k in r for k in ("senior", "sr.", "sr ", "architect", "specialist iii", "specialist iv")):
+        return 4
+    if any(k in r for k in ("engineer", "developer", "analyst", "specialist", "consultant")):
+        return 3
+    if any(k in r for k in ("junior", "jr.", "jr ", "associate", "trainee")):
+        return 2
+    if "intern" in r:
+        return 1
+    return 0
+
+
+def compute_trajectory_multiplier(
+    work_experience: list[dict[str, Any]] | None,
+) -> tuple[float, dict[str, Any]]:
+    rows = [r for r in (work_experience or []) if isinstance(r, dict)]
+    if len(rows) < 2:
+        return 1.0, {"mode": "insufficient_roles", "delta": 0, "promotions": 0, "regressions": 0, "coverage": 0.0}
+
+    sortable: list[tuple[int, int, str]] = []
+    for idx, row in enumerate(rows):
+        role = str(row.get("role") or "").strip()
+        if not role:
+            continue
+        year = _extract_year(row.get("start_date"))
+        sort_year = year if year is not None else (1900 + idx)
+        sortable.append((sort_year, idx, role))
+
+    if len(sortable) < 2:
+        return 1.0, {"mode": "insufficient_roles", "delta": 0, "promotions": 0, "regressions": 0, "coverage": 0.0}
+
+    sortable.sort(key=lambda x: (x[0], x[1]))
+    levels: list[int] = []
+    unresolved_roles = 0
+    for _, _, role in sortable:
+        lvl = _role_level(role)
+        if lvl > 0:
+            levels.append(lvl)
+        else:
+            unresolved_roles += 1
+
+    if len(levels) < 2:
+        return 1.0, {
+            "mode": "insufficient_levels",
+            "delta": 0,
+            "promotions": 0,
+            "regressions": 0,
+            "coverage": round(len(levels) / max(1, len(sortable)), 3),
+            "unresolved_roles": unresolved_roles,
+        }
+
+    delta = levels[-1] - levels[0]
+    promotions = sum(1 for i in range(1, len(levels)) if levels[i] > levels[i - 1])
+    regressions = sum(1 for i in range(1, len(levels)) if levels[i] < levels[i - 1])
+
+    if delta >= 3:
+        base = 1.10
+    elif delta == 2:
+        base = 1.07
+    elif delta == 1:
+        base = 1.04
+    elif delta == 0:
+        base = 1.00
+    else:
+        base = 0.90
+
+    base += min(0.03, promotions * 0.01)
+    base -= min(0.06, regressions * 0.03)
+    raw_multiplier = max(0.85, min(1.12, base))
+
+    # Low title-recognition coverage => dampen trajectory impact toward neutral.
+    coverage = len(levels) / max(1, len(sortable))
+    confidence = max(0.35, min(1.0, coverage))
+    dampened_multiplier = 1.0 + ((raw_multiplier - 1.0) * confidence)
+    multiplier = round(max(0.88, min(1.12, dampened_multiplier)), 4)
+    return multiplier, {
+        "mode": "computed",
+        "delta": delta,
+        "promotions": promotions,
+        "regressions": regressions,
+        "coverage": round(coverage, 3),
+        "unresolved_roles": unresolved_roles,
+    }
+
+
+def compute_composite_vector_similarity(
+    *,
+    full_similarity: float,
+    skills_similarity: float | None = None,
+    experience_similarity: float | None = None,
+) -> tuple[float, dict[str, Any]]:
+    """
+    Blend full-resume and section-level semantic similarities.
+    """
+    weights = {
+        "full": 0.40,
+        "skills": 0.35,
+        "experience": 0.25,
+    }
+    def _safe_float(value: Any, fallback: float = 0.0) -> float:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return fallback
+        return parsed if math.isfinite(parsed) else fallback
+
+    values = {"full": _safe_float(full_similarity)}
+    if skills_similarity is not None:
+        values["skills"] = _safe_float(skills_similarity)
+    if experience_similarity is not None:
+        values["experience"] = _safe_float(experience_similarity)
+
+    weighted_sum = 0.0
+    weight_sum = 0.0
+    for key, value in values.items():
+        weight = weights[key]
+        component = max(0.0, min(1.0, _safe_float(value)))
+        weighted_sum += component * weight
+        weight_sum += weight
+
+    if weight_sum <= 1e-9:
+        return 0.0, {"weights_used": {}, "components": {}, "composite": 0.0}
+
+    composite_value = _safe_float(weighted_sum / weight_sum)
+    composite = round(max(0.0, min(1.0, composite_value)), 6)
+    return composite, {
+        "weights_used": {k: round(weights[k] / weight_sum, 4) for k in values.keys()},
+        "components": {k: round(max(0.0, min(1.0, _safe_float(v))), 6) for k, v in values.items()},
+        "composite": composite,
+    }
 
 
 # ─── Semantic Skill Matching ──────────────────────────────────────────────────
@@ -391,8 +728,15 @@ def compute_relevant_experience_years(
     required_skills: list[str],
     total_years: float = 0.0,
 ) -> float:
+    try:
+        safe_total_years = float(total_years)
+    except (TypeError, ValueError):
+        safe_total_years = 0.0
+    if not math.isfinite(safe_total_years) or safe_total_years < 0:
+        safe_total_years = 0.0
+
     if not skill_years or not required_skills:
-        return total_years * 0.7
+        return safe_total_years * 0.7
 
     best_years = 0.0
     for req_skill in required_skills:
@@ -417,12 +761,20 @@ def compute_relevant_experience_years(
                     matched = True
 
             if matched:
-                best_years = max(best_years, yrs)
+                try:
+                    numeric_years = float(yrs)
+                except (TypeError, ValueError):
+                    logger.debug("Skipping non-numeric skill_years value: %r", yrs)
+                    continue
+                if not math.isfinite(numeric_years) or numeric_years < 0:
+                    logger.debug("Skipping invalid skill_years value: %r", yrs)
+                    continue
+                best_years = max(best_years, numeric_years)
 
     if best_years > 0:
         return round(best_years, 1)
 
-    return round(total_years * 0.6, 1)
+    return round(safe_total_years * 0.6, 1)
 
 
 # ─── Experience Matching ──────────────────────────────────────────────────────
@@ -434,6 +786,30 @@ def experience_match_score(
     skill_years: dict[str, float] | None = None,
     required_skills: list[str] | None = None,
 ) -> float:
+    try:
+        exp_min = int(exp_min)
+    except (TypeError, ValueError):
+        exp_min = 0
+    try:
+        exp_max = int(exp_max)
+    except (TypeError, ValueError):
+        exp_max = exp_min
+    exp_min = max(0, exp_min)
+    exp_max = max(0, exp_max)
+    if exp_max < exp_min:
+        logger.warning("Inverted experience range: min=%s max=%s - swapping", exp_min, exp_max)
+        exp_min, exp_max = exp_max, exp_min
+    if exp_min == exp_max:
+        exp_max = exp_min + 1
+
+    try:
+        candidate_years = float(candidate_years)
+    except (TypeError, ValueError):
+        candidate_years = 0.0
+    if not math.isfinite(candidate_years):
+        candidate_years = 0.0
+    candidate_years = max(0.0, candidate_years)
+
     def _score(years: float) -> float:
         if years >= exp_min:
             if years <= exp_max:
@@ -579,7 +955,7 @@ def education_match_score(
         if strictness == "strict":
             return max(base * 0.90, 45.0)
         elif strictness == "preferred":
-            return max(base * 0.75, SCORING_PASS_THRESHOLD)
+            return max(base * (3.0 / 4.0), SCORING_PASS_THRESHOLD)
         else:
             return max(base * 0.65, 60.0)
     else:  # senior
@@ -767,15 +1143,18 @@ _TIER_WEIGHTS: dict[str, dict[str, float]] = {
 
 
 def detect_candidate_tier(experience_years: float) -> str:
-    if experience_years < TIER_FRESHER_MAX_YEARS:
-        return "fresher"
-    if experience_years < TIER_MID_MAX_YEARS:
-        return "mid"
-    return "senior"
+    return candidate_tier_from_years(experience_years)
 
 
 def _blended_weights(experience_years: float) -> dict:
-    """Smooth interpolation between tiers — no hard score cliffs."""
+    """Smooth interpolation between tiers - no hard score cliffs."""
+    try:
+        experience_years = float(experience_years)
+    except (TypeError, ValueError):
+        experience_years = 0.0
+    if not math.isfinite(experience_years):
+        experience_years = 0.0
+    experience_years = max(0.0, experience_years)
     # FIX BUG #2 (MEDIUM): Weight transition cliff inverts ranking. 
     # Spread the interpolation bounds so +6mo of experience doesn't drastically 
     # mutate the formula weights and inadvertently grant +10 points.
@@ -1153,6 +1532,11 @@ def compute_resume_score_with_ai_override(
     phase_c_enabled: bool = False,
     ai_confidence: str | None = None,
     jd_signal_strength: float | None = None,
+    required_skills: list[str] | None = None,
+    work_experience: list[dict[str, Any]] | None = None,
+    skill_years: dict[str, float] | None = None,
+    skills_vector_similarity: float | None = None,
+    experience_vector_similarity: float | None = None,
 ) -> tuple[float, float, float, float]:
     """
     Compute final resume_score using AI scores when available, rule-based as fallback.
@@ -1173,6 +1557,32 @@ def compute_resume_score_with_ai_override(
         except (TypeError, ValueError):
             signal = None
     safe_bias_points = max(_CALIBRATION_MAX_NEGATIVE_BIAS, min(_CALIBRATION_MAX_POSITIVE_BIAS, float(score_bias_points or 0.0)))
+
+    # Composite vector benchmark: blend full resume/JD semantic similarity
+    # with section-level similarities when available.
+    effective_vector_sim = float(vector_sim or 0.0)
+    if skills_vector_similarity is not None or experience_vector_similarity is not None:
+        effective_vector_sim, _ = compute_composite_vector_similarity(
+            full_similarity=float(vector_sim or 0.0),
+            skills_similarity=skills_vector_similarity,
+            experience_similarity=experience_vector_similarity,
+        )
+
+    # Profile multipliers (recency, tenure/churn, trajectory).
+    recency_multiplier, _ = compute_skill_recency_multiplier(
+        required_skills or [],
+        work_experience or [],
+        skill_years=skill_years or {},
+    )
+    tenure_multiplier, _ = compute_tenure_churn_multiplier(work_experience or [])
+    trajectory_multiplier, _ = compute_trajectory_multiplier(work_experience or [])
+
+    profile_weighted = (
+        (recency_multiplier * 0.45)
+        + (tenure_multiplier * 0.30)
+        + (trajectory_multiplier * 0.25)
+    )
+    profile_multiplier = max(0.78, min(1.12, profile_weighted))
 
     def _must_have_penalty(score: float, skill_pct_used: float) -> float:
         if not has_jd_skills:
@@ -1195,7 +1605,17 @@ def compute_resume_score_with_ai_override(
             penalty = max(penalty, 0.72)
         return score * penalty
 
-    if ai_scores and all(k in ai_scores for k in ("skill_score", "experience_score", "project_score")):
+    def _apply_profile_multiplier(score: float) -> float:
+        return score * profile_multiplier
+
+    ai_path_eligible = (
+        isinstance(ai_scores, dict)
+        and not bool(ai_scores.get("parse_failed", False))
+        and isinstance(ai_scores.get("overall"), (int, float))
+        and all(k in ai_scores for k in ("skill_score", "experience_score", "project_score"))
+    )
+
+    if ai_path_eligible:
         skill_pct = float(ai_scores["skill_score"])
         exp_pct = float(ai_scores["experience_score"])
         proj_pct = float(ai_scores["project_score"])
@@ -1221,7 +1641,7 @@ def compute_resume_score_with_ai_override(
             exp_pct,
             proj_pct,
             education_pct,
-            vector_sim,
+            effective_vector_sim,
             location_pct,
             experience_years,
             weights=calibrated_weights,
@@ -1244,6 +1664,7 @@ def compute_resume_score_with_ai_override(
             score = _apply_soft_cap(score, 54.0, retain_above_cap=0.06)
 
         score = _must_have_penalty(score, skill_pct)
+        score = _apply_profile_multiplier(score)
         score += safe_bias_points
 
         if not has_jd_skills:
@@ -1280,7 +1701,7 @@ def compute_resume_score_with_ai_override(
             rule_exp_pct,
             rule_proj_pct,
             education_pct,
-            vector_sim,
+            effective_vector_sim,
             location_pct,
             experience_years,
             weights=calibrated_weights,
@@ -1293,6 +1714,7 @@ def compute_resume_score_with_ai_override(
             score = _apply_soft_cap(score, 54.0, retain_above_cap=0.06)
 
         score = _must_have_penalty(score, rule_skill_pct)
+        score = _apply_profile_multiplier(score)
         score += safe_bias_points
 
         if not has_jd_skills:
@@ -1338,17 +1760,26 @@ def compute_quiz_score(
     total_score = 0.0
 
     for q in questions:
-        qid = q["id"]
-        # FIX: respect the weight stored in the DB first; fall back to WEIGHT_MAP
-        # only when the DB value is missing/zero. Previously WEIGHT_MAP was always
-        # used, silently overriding any custom weight a recruiter set (e.g. 5 pts
-        # for a critical logic question would be forced back down to 1).
-        db_weight = q.get("weight")
-        weight = int(db_weight) if db_weight is not None else WEIGHT_MAP.get(q.get("difficulty"), 1)
-        skill = q.get("skill_tag") or "general"
-        diff = (q.get("difficulty") or "").lower().strip()
+        qid_raw = q.get("id")
+        if qid_raw is None:
+            logger.warning("Skipping question with missing id in scoring: %r", q)
+            continue
+        qid = str(qid_raw)
+
+        diff = str(q.get("difficulty") or "").lower().strip()
         if diff not in diff_bd:
-            diff = "easy"
+            diff = "medium"
+
+        raw_weight = q.get("weight")
+        try:
+            weight = int(raw_weight) if raw_weight is not None else None
+        except (TypeError, ValueError):
+            weight = None
+        if not weight or weight <= 0:
+            weight = WEIGHT_MAP.get(diff, 1)
+        weight = max(1, int(weight))
+
+        skill = q.get("skill_tag") or "general"
 
         if skill not in skill_bd:
             skill_bd[skill] = {"score": 0, "max": 0}
@@ -1357,7 +1788,8 @@ def compute_quiz_score(
         diff_bd[diff]["max"] += weight
 
         candidate_ans = answers.get(qid)
-        if candidate_ans is not None and candidate_ans == q["correct_answer"]:
+        correct_answer = q.get("correct_answer")
+        if candidate_ans is not None and candidate_ans == correct_answer:
             total_score += weight
             skill_bd[skill]["score"] += weight
             diff_bd[diff]["score"] += weight
@@ -1385,19 +1817,30 @@ def compute_final_score(
     yet taken the quiz. Previously this crashed with TypeError. When quiz_score
     is None the quiz weight is redistributed to resume so the score stays valid.
     """
+    def _safe_clamp_100(value: Any) -> float:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return 0.0
+        if not math.isfinite(parsed):
+            return 0.0
+        return min(100.0, max(0.0, parsed))
+
     if quiz_score is None:
         # Candidate has not taken quiz: keep resume score as-is.
-        return round(resume_score, 2)
+        return round(_safe_clamp_100(resume_score), 2)
 
     # Backward-compatible fallback for legacy callers that pass quiz_max_score=0.
     effective_quiz_max = quiz_max_score if quiz_max_score > 0 else 36.0
-    quiz_pct = min(100.0, (quiz_score / effective_quiz_max) * 100)
+    safe_quiz_score = _safe_clamp_100(quiz_score)
+    quiz_pct = min(100.0, max(0.0, (safe_quiz_score / effective_quiz_max) * 100))
+    safe_resume_score = _safe_clamp_100(resume_score)
     total_weight = resume_weight + quiz_weight
     if total_weight <= 0:
-        return round(min(100.0, max(0.0, resume_score)), 2)
+        return round(safe_resume_score, 2)
     # Normalize by the configured total to prevent values >100 when legacy rows
     # contain invalid weights (e.g. 80/80) while preserving relative weighting.
-    final = ((resume_score * resume_weight) + (quiz_pct * quiz_weight)) / total_weight
-    return round(min(100.0, max(0.0, final)), 2)
+    final = ((safe_resume_score * resume_weight) + (quiz_pct * quiz_weight)) / total_weight
+    return round(_safe_clamp_100(final), 2)
 
 

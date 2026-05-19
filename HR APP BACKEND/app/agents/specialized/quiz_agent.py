@@ -13,6 +13,7 @@ import logging
 
 from app.agents.base import BaseAgent
 from app.services import gemini_service, scoring_service
+from app.utils.quiz_validation import QuestionValidationError, deduplicate_questions, validate_question
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,10 @@ def _fallback_quiz_questions(skills: list[str], easy: int, medium: int, hard: in
     return rows
 
 
+class QuizGenerationError(ValueError):
+    """Raised when quiz generation cannot produce the required valid question count."""
+
+
 class QuizAgent(BaseAgent):
     name = "quiz_agent"
     model_key = "quiz_agent_generate"
@@ -69,10 +74,10 @@ class QuizAgent(BaseAgent):
         easy = int(state.get("easy", 8))
         medium = int(state.get("medium", 8))
         hard = int(state.get("hard", 4))
-        timeout_s = float(state.get("timeout_s", 45))
+        timeout_s = max(5.0, min(float(state.get("timeout_s", 45)), 120.0))
         model = self.resolve_model(state, key="quiz_agent_generate")
         try:
-            questions = await asyncio.wait_for(
+            raw_questions = await asyncio.wait_for(
                 gemini_service.generate_quiz_questions(
                     jd_text=jd_text,
                     skills=skills,
@@ -81,14 +86,26 @@ class QuizAgent(BaseAgent):
                     hard=hard,
                     model=model,
                 ),
-                timeout=max(5.0, timeout_s),
+                timeout=timeout_s,
             )
-            if not questions:
-                questions = _fallback_quiz_questions(skills, easy, medium, hard)
         except Exception as exc:
             logger.warning("QuizAgent generate fallback activated: %s", exc)
-            questions = _fallback_quiz_questions(skills, easy, medium, hard)
-        return {"questions": questions}
+            raw_questions = _fallback_quiz_questions(skills, easy, medium, hard)
+
+        validated: list[dict[str, Any]] = []
+        for raw_question in raw_questions or []:
+            try:
+                validated.append(validate_question(raw_question))
+            except (QuestionValidationError, ValueError, AssertionError) as validation_error:
+                logger.warning("Dropping invalid generated question: %s | %r", validation_error, raw_question)
+
+        validated, _ = deduplicate_questions(validated)
+        required_count = max(1, easy + medium + hard)
+        if len(validated) < required_count:
+            raise QuizGenerationError(
+                f"Only {len(validated)}/{required_count} valid questions generated"
+            )
+        return {"questions": validated[:required_count]}
 
     async def _evaluate(self, state: dict[str, Any]) -> dict[str, Any]:
         questions: list[dict] = state.get("questions") or []
@@ -99,7 +116,12 @@ class QuizAgent(BaseAgent):
         raw_score, skill_breakdown, difficulty_breakdown = scoring_service.compute_quiz_score(
             questions, answers
         )
-        max_score = sum(q.get("weight", 1) for q in questions)
+        max_score = sum(
+            max(1, int(q.get("weight", 1)))
+            for q in questions
+            if isinstance(q.get("weight", 1), (int, float, str))
+            and str(q.get("weight", 1)).strip() != ""
+        )
         pct = round((raw_score / max_score * 100) if max_score else 0.0, 1)
 
         return {

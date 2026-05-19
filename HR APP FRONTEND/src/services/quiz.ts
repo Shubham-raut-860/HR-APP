@@ -1,4 +1,5 @@
 import api from './api';
+import { getQuizRuntimeToken, getQuizToken } from './tokenStore';
 
 export interface Quiz {
   id: string;
@@ -160,11 +161,11 @@ export const claimQuizMagicLink = async (token: string) => {
 };
 
 export const submitQuiz = async (attemptId: string, answers: Record<string, number>, tabSwitches: number) => {
-  const quizToken = sessionStorage.getItem('quiz_token');
-  const runtimeQuizToken = sessionStorage.getItem('quiz_access_token');
+  const quizToken = getQuizToken();
+  const runtimeQuizToken = getQuizRuntimeToken();
   const tokenForHeader = quizToken ?? runtimeQuizToken ?? '';
-  if (!quizToken) {
-    console.warn('Quiz submit without quiz_token in sessionStorage; proceeding with fallback path.');
+  if (!tokenForHeader) {
+    throw new Error('Quiz token required');
   }
   // Submit can be slow: scoring + DB write + push notifications.
   // The global api timeout is 30s — that's too tight here. Use 3 minutes.
@@ -180,6 +181,25 @@ export const submitQuiz = async (attemptId: string, answers: Record<string, numb
       'X-Quiz-Token': tokenForHeader,
     },
   });
+  return response.data;
+};
+
+export const reportTabSwitch = async (attemptId: string) => {
+  const quizToken = getQuizToken();
+  const runtimeQuizToken = getQuizRuntimeToken();
+  const tokenForHeader = quizToken ?? runtimeQuizToken ?? '';
+  if (!tokenForHeader) {
+    throw new Error('Quiz token required');
+  }
+  const response = await api.post<{ attempt_id: string; tab_switches: number }>(
+    `/quiz/attempt/${attemptId}/tab-switch`,
+    null,
+    {
+      headers: {
+        'X-Quiz-Token': tokenForHeader,
+      },
+    },
+  );
   return response.data;
 };
 

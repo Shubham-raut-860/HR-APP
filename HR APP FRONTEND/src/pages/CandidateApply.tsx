@@ -137,7 +137,13 @@ export default function CandidateApply() {
         try {
           const app = await getMyApplication(id);
           if (app) { setHasApplied(true); setMyApp(app); }
-        } catch (e) {}
+        } catch (e: any) {
+          const status = e?.response?.status;
+          // 404/401 can happen for first-time applicants; keep flow quiet.
+          if (status !== 404 && status !== 401) {
+            console.warn("Could not load existing application state:", e);
+          }
+        }
       } catch (error) {
         toast.error("Job not found");
         navigate("/candidate/jobs");
@@ -192,11 +198,6 @@ export default function CandidateApply() {
     setApplying(true);
     try {
       // Pass enriched career_breaks context with the application
-      const formData = new FormData();
-      formData.append("file", file);
-      if (careerBreaks.length > 0) {
-        formData.append("career_breaks", JSON.stringify(careerBreaks));
-      }
       await applyToJob(id, file, careerBreaks.length > 0 ? careerBreaks : undefined);
       setHasApplied(true);
       toast.success("Application submitted successfully!");

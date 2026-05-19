@@ -111,7 +111,7 @@ class BaseAgent(ABC):
         start = time.perf_counter()
         log_ctx = {"agent": self.name, "trace_id": trace_id}
 
-        logger.debug("→ %s starting", self.name, extra=log_ctx)
+        logger.debug("-> %s starting", self.name, extra=log_ctx)
         try:
             updates = await self.run(state)
             elapsed = time.perf_counter() - start
@@ -152,6 +152,8 @@ class BaseAgent(ABC):
             import httpx
             if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError)):
                 return True
-        except Exception:
-            pass
+        except ImportError:
+            pass  # httpx not installed; skip httpx-specific classification
+        except Exception as _hx_exc:
+            logger.debug("httpx isinstance check failed: %s", _hx_exc)
         return True  # default: assume retryable for unknown exceptions

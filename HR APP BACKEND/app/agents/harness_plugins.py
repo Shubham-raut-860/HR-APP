@@ -2,34 +2,129 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from harness.adapters.langgraph import LangGraphAdapter
-from harness.core.context import AgentContext
+try:
+    from harness.agents.base import BaseAgent as _HarnessBaseAgent
+except Exception:  # pragma: no cover - keeps runtime fallback working when harness import is unavailable
+    class _HarnessBaseAgent:  # type: ignore[too-many-ancestors]
+        pass
 
-from app.agents.graphs import (
-    build_career_tools_graph,
-    build_full_resume_pipeline_graph,
-    build_jd_generation_graph,
-    build_quiz_generation_graph,
-    build_quiz_with_code_eval_graph,
-    build_ranking_pipeline_graph,
-    build_resume_scoring_agents_graph,
+try:
+    from harness.observability.trace_schema import SpanKind, SpanStatus
+except Exception:  # pragma: no cover
+    SpanKind = SpanStatus = None  # type: ignore[assignment]
+
+from app.agents.specialized import (
+    CareerAnalystAgent,
+    CodeEvaluationAgent,
+    DeduplicationAgent,
+    CoverLetterAgent,
+    EmbeddingAgent,
+    FileExtractionAgent,
+    JDGeneratorAgent,
+    JDParserAgent,
+    NotificationAgent,
+    QuizAgent,
+    RankingAgent,
+    ResumeBuilderAgent,
+    ResumeEnhancerAgent,
+    ResumeParserAgent,
+    ScoringAgent,
 )
-from app.agents.specialized import DeduplicationAgent, NotificationAgent
-from app.services import gemini_service, resume_fallback_parser
+from app.services.token_monitor_service import get_token_monitor
+
+logger = logging.getLogger(__name__)
+
+
+def _ensure_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _ensure_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _ensure_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return []
+
+
+def _parse_task(task: str) -> dict[str, Any]:
+    if not task:
+        return {}
+    try:
+        parsed = json.loads(task)
+    except json.JSONDecodeError:
+        return {"raw_task": task}
+    return parsed if isinstance(parsed, dict) else {"task_payload": parsed}
+
+
+def _build_parsed_job(task_data: dict[str, Any]) -> dict[str, Any]:
+    parsed = task_data.get("parsed_job")
+    if isinstance(parsed, dict) and parsed:
+        return parsed
+    return {
+        "title": task_data.get("job_title") or task_data.get("title") or task_data.get("role") or "Role",
+        "role": task_data.get("role") or task_data.get("job_title") or task_data.get("title") or "Role",
+        "experience_min": _ensure_int(task_data.get("exp_min", task_data.get("experience_min")), 0),
+        "experience_max": _ensure_int(task_data.get("exp_max", task_data.get("experience_max")), 5),
+        "must_have_skills": _ensure_list(task_data.get("must_have")),
+        "good_to_have_skills": _ensure_list(task_data.get("good_to_have")),
+        "description": str(task_data.get("description") or ""),
+        "location": task_data.get("location") or "Remote",
+        "education_requirement": task_data.get("education_requirement"),
+    }
+
+
+def _decode_file_bytes(task_data: dict[str, Any]) -> bytes | None:
+    raw = task_data.get("content_b64") or task_data.get("file_bytes_b64")
+    if not raw:
+        return None
+    if not isinstance(raw, str):
+        return None
+    try:
+        return base64.b64decode(raw)
+    except Exception:
+        return None
+
+
+def _safe_preview(value: Any, limit: int = 500) -> str:
+    try:
+        text = json.dumps(value, ensure_ascii=False, default=str)
+    except Exception:
+        text = str(value)
+    if len(text) > limit:
+        return text[:limit] + "...<truncated>"
+    return text
 
 
 @dataclass
 class _HRAgentResult:
     run_id: str
-    output: str = ""
     success: bool = True
+    output: str = ""
+    data: dict[str, Any] = field(default_factory=dict)
     steps: int = 1
     tokens: int = 0
+    failure_class: str | None = None
+    error_message: str | None = None
     elapsed_seconds: float = 0.0
     cost_usd: float = 0.0
     tool_calls: int = 0
@@ -38,12 +133,10 @@ class _HRAgentResult:
     handoff_count: int = 0
     cache_hits: int = 0
     cache_read_tokens: int = 0
-    failure_class: str | None = None
-    error_message: str | None = None
-    output_data: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "run_id": self.run_id,
             "output": self.output,
             "steps": self.steps,
@@ -59,519 +152,536 @@ class _HRAgentResult:
             "handoff_count": self.handoff_count,
             "cache_hits": self.cache_hits,
             "cache_read_tokens": self.cache_read_tokens,
-            "output_data": self.output_data,
+            "metadata": self.metadata,
+            "data": self.data,
         }
+        if self.data:
+            payload.update(self.data)
+        return payload
 
 
-def _parse_task_json(task: str) -> dict[str, Any]:
-    try:
-        data = json.loads(task or "{}")
-    except Exception:
-        data = {}
-    return data if isinstance(data, dict) else {}
+@dataclass
+class _HarnessStepEvent:
+    run_id: str
+    step: int
+    event_type: str
+    payload: dict[str, Any]
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
-def _decode_file_bytes(task_data: dict[str, Any]) -> bytes:
-    raw = task_data.get("file_bytes")
-    if isinstance(raw, (bytes, bytearray)):
-        return bytes(raw)
+@dataclass
+class _LocalRunCtx:
+    run_id: str
+    tenant_id: str
+    agent_type: str
+    task: str
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    step_count: int = 0
+    token_count: int = 0
+    failure_class: str | None = None
+    failed: bool = False
 
-    raw = task_data.get("content")
-    if isinstance(raw, (bytes, bytearray)):
-        return bytes(raw)
+    @property
+    def elapsed_seconds(self) -> float:
+        return (datetime.now(UTC) - self.started_at).total_seconds()
 
-    for key in ("file_bytes_b64", "content_b64"):
-        encoded = task_data.get(key)
-        if isinstance(encoded, str) and encoded.strip():
+
+class _HRHarnessAgentBase(_HarnessBaseAgent):
+    agent_type = "base"
+
+    def __init__(self, *_args: Any, **kwargs: Any) -> None:
+        # Accept arbitrary kwargs so this class can also be instantiated by
+        # harness.workers.agent_worker plugin path (which passes common kwargs).
+        self._trace_recorder = kwargs.get("trace_recorder")
+        self._event_bus = kwargs.get("event_bus")
+        self._mlflow_tracer = kwargs.get("mlflow_tracer")
+
+    async def _execute(self, task_data: dict[str, Any]) -> dict[str, Any]:
+        raise NotImplementedError
+
+    async def _emit_event(self, event: _HarnessStepEvent) -> None:
+        if self._event_bus is None:
+            return
+        try:
+            await self._event_bus.publish(event)
+        except Exception as exc:
+            logger.debug("HR harness event publish skipped: %s", exc)
+
+    async def run(
+        self,
+        ctx: Any = None,
+        *,
+        tenant_id: str | None = None,
+        task: str | None = None,
+        run_id: str | None = None,
+        workspace_path: Any = None,  # noqa: ARG002
+        metadata: dict[str, Any] | None = None,  # noqa: ARG002
+    ) -> _HRAgentResult:
+        del metadata
+
+        if ctx is not None and hasattr(ctx, "task") and hasattr(ctx, "run_id"):
+            raw_task = str(getattr(ctx, "task") or "")
+            resolved_run_id = str(getattr(ctx, "run_id") or run_id or "")
+            run_ctx: Any = ctx
+        else:
+            raw_task = str(task or "")
+            resolved_run_id = str(run_id or "")
+            run_ctx = _LocalRunCtx(
+                run_id=resolved_run_id,
+                tenant_id=str(tenant_id or "default"),
+                agent_type=self.agent_type,
+                task=raw_task,
+            )
+
+        task_data = _parse_task(raw_task)
+        trace_run_span_id: str | None = None
+        trace_exec_span_id: str | None = None
+        token_monitor = get_token_monitor()
+        token_checkpoint = token_monitor.checkpoint() if token_monitor.enabled else None
+        started = time.perf_counter()
+
+        await self._emit_event(
+            _HarnessStepEvent(
+                run_id=resolved_run_id,
+                step=int(getattr(run_ctx, "step_count", 0) or 0),
+                event_type="started",
+                payload={"task": raw_task, "agent_type": self.agent_type},
+            )
+        )
+        if (
+            self._trace_recorder is not None
+            and SpanKind is not None
+            and SpanStatus is not None
+        ):
             try:
-                return base64.b64decode(encoded)
-            except Exception:
-                continue
+                trace_run_span_id = await self._trace_recorder.start_span(
+                    resolved_run_id,
+                    SpanKind.RUN,  # type: ignore[arg-type]
+                    f"run:{self.agent_type}",
+                    ctx=run_ctx,
+                    input_preview=raw_task[:500],
+                    metadata={"plugin": "hr_app"},
+                )
+                trace_exec_span_id = await self._trace_recorder.start_span(
+                    resolved_run_id,
+                    SpanKind.AGENT,  # type: ignore[arg-type]
+                    f"agent:{self.agent_type}",
+                    ctx=run_ctx,
+                    input_preview=_safe_preview(task_data),
+                )
+            except Exception as exc:
+                logger.debug("HR trace start skipped: %s", exc)
+                trace_run_span_id = None
+                trace_exec_span_id = None
 
-    doc_text = task_data.get("doc_text")
-    if isinstance(doc_text, str) and doc_text.strip():
-        return doc_text.encode("utf-8", errors="ignore")
-    return b""
+        try:
+            output_data = await self._execute(task_data)
+            output_text = ""
+            if isinstance(output_data, dict):
+                output_text = str(
+                    output_data.get("summary")
+                    or output_data.get("reasoning")
+                    or output_data.get("output")
+                    or ""
+                )
+            if hasattr(run_ctx, "step_count"):
+                run_ctx.step_count = int(getattr(run_ctx, "step_count", 0) or 0) + 1
+
+            token_delta = (
+                token_monitor.delta_since(token_checkpoint)
+                if token_checkpoint is not None
+                else {}
+            )
+            tokens_used = int(token_delta.get("total_tokens", 0) or 0)
+            cost_used = float(token_delta.get("total_cost_usd", 0.0) or 0.0)
+            if hasattr(run_ctx, "token_count"):
+                run_ctx.token_count = int(getattr(run_ctx, "token_count", 0) or 0) + tokens_used
+
+            if (
+                self._trace_recorder is not None
+                and trace_exec_span_id is not None
+                and SpanStatus is not None
+            ):
+                try:
+                    await self._trace_recorder.end_span(
+                        resolved_run_id,
+                        trace_exec_span_id,
+                        status=SpanStatus.OK,  # type: ignore[arg-type]
+                        output_preview=_safe_preview(output_data),
+                        input_tokens=tokens_used,
+                        output_tokens=0,
+                        cost_usd=cost_used,
+                    )
+                except Exception as exc:
+                    logger.debug("HR trace execute end skipped: %s", exc)
+
+            await self._emit_event(
+                _HarnessStepEvent(
+                    run_id=resolved_run_id,
+                    step=int(getattr(run_ctx, "step_count", 0) or 0),
+                    event_type="completed",
+                    payload={"output": output_text, "elapsed_seconds": getattr(run_ctx, "elapsed_seconds", 0.0)},
+                )
+            )
+            return _HRAgentResult(
+                run_id=resolved_run_id,
+                success=True,
+                output=output_text,
+                data=output_data if isinstance(output_data, dict) else {"result": output_data},
+                steps=int(getattr(run_ctx, "step_count", 1) or 1),
+                tokens=tokens_used,
+                elapsed_seconds=float(time.perf_counter() - started),
+                cost_usd=cost_used,
+                metadata={
+                    "agent_type": self.agent_type,
+                    "trace_enabled": bool(self._trace_recorder is not None),
+                    "token_calls": int(token_delta.get("calls", 0) or 0),
+                    "token_prompt": int(token_delta.get("prompt_tokens", 0) or 0),
+                    "token_completion": int(token_delta.get("completion_tokens", 0) or 0),
+                    "token_over_budget_calls": int(token_delta.get("over_budget_calls", 0) or 0),
+                },
+            )
+        except Exception as exc:
+            if hasattr(run_ctx, "failed"):
+                run_ctx.failed = True
+            if hasattr(run_ctx, "failure_class"):
+                run_ctx.failure_class = "runtime_error"
+            if (
+                self._trace_recorder is not None
+                and trace_exec_span_id is not None
+                and SpanStatus is not None
+            ):
+                try:
+                    await self._trace_recorder.end_span(
+                        resolved_run_id,
+                        trace_exec_span_id,
+                        status=SpanStatus.ERROR,  # type: ignore[arg-type]
+                        error=str(exc),
+                        output_preview="failed",
+                    )
+                except Exception as end_exc:
+                    logger.debug("HR trace execute error end skipped: %s", end_exc)
+            await self._emit_event(
+                _HarnessStepEvent(
+                    run_id=resolved_run_id,
+                    step=int(getattr(run_ctx, "step_count", 0) or 0),
+                    event_type="failed",
+                    payload={
+                        "error": str(exc),
+                        "failure_class": getattr(run_ctx, "failure_class", None),
+                        "elapsed_seconds": getattr(run_ctx, "elapsed_seconds", 0.0),
+                    },
+                )
+            )
+            raise
+        finally:
+            if (
+                self._trace_recorder is not None
+                and trace_run_span_id is not None
+                and SpanStatus is not None
+            ):
+                try:
+                    status = SpanStatus.ERROR if bool(getattr(run_ctx, "failed", False)) else SpanStatus.OK
+                    await self._trace_recorder.end_span(
+                        resolved_run_id,
+                        trace_run_span_id,
+                        status=status,  # type: ignore[arg-type]
+                        output_preview=f"agent={self.agent_type}",
+                        error=str(getattr(run_ctx, "failure_class", "") or "") or None,
+                    )
+                except Exception as exc:
+                    logger.debug("HR trace run end skipped: %s", exc)
 
 
-def _default_parsed_job(task_data: dict[str, Any]) -> dict[str, Any]:
-    job = task_data.get("parsed_job") or task_data.get("job") or {}
-    if isinstance(job, dict) and job:
-        return job
+class ResumeParserHarnessAgent(_HRHarnessAgentBase):
+    agent_type = "resume_parser"
 
-    description = (
-        task_data.get("job_description")
-        or task_data.get("jd_text")
-        or task_data.get("doc_text")
-        or ""
-    )
-    return {
-        "title": task_data.get("job_title") or "General Role",
-        "role": task_data.get("job_title") or "General Role",
-        "description": description,
-        "must_have_skills": task_data.get("must_have_skills") or [],
-        "good_to_have_skills": task_data.get("good_to_have_skills") or [],
-        "experience_min": int(task_data.get("experience_min") or 0),
-        "experience_max": int(task_data.get("experience_max") or 5),
-        "location": task_data.get("location") or "Remote",
-    }
-
-
-async def _run_graph_with_adapter(
-    *,
-    run_id: str,
-    tenant_id: str,
-    agent_type: str,
-    raw_task: str,
-    workspace_path: Any,
-    metadata: dict[str, Any],
-    task_data: dict[str, Any],
-    graph: Any,
-) -> _HRAgentResult:
-    started = time.perf_counter()
-    workspace = Path(str(workspace_path))
-    ctx = AgentContext(
-        run_id=run_id,
-        tenant_id=tenant_id,
-        agent_type=agent_type,
-        task=raw_task,
-        memory=None,
-        workspace_path=workspace,
-        max_steps=100,
-        max_tokens=500_000,
-        timeout_seconds=120.0,
-        metadata=metadata or {},
-    )
-
-    adapter = LangGraphAdapter(graph)
-    async for _ in adapter.run(ctx, task_data):
-        pass
-    result = await adapter.get_result()
-
-    output_data = (
-        result.metadata
-        if isinstance(result.metadata, dict)
-        else {"result": result.metadata}
-    )
-    elapsed = max(0.0, time.perf_counter() - started)
-    return _HRAgentResult(
-        run_id=run_id,
-        output=str(result.output or ""),
-        success=True,
-        steps=int(getattr(result, "steps", 1) or 1),
-        elapsed_seconds=elapsed,
-        output_data=output_data,
-    )
-
-
-class ResumeParserHRAgent:
-    async def run(
-        self,
-        tenant_id: str,
-        task: str,
-        run_id: str,
-        workspace_path: Any,
-        metadata: dict,
-    ) -> _HRAgentResult:
-        task_data = _parse_task_json(task)
-        task_data = {
-            **task_data,
-            "filename": task_data.get("filename") or "resume.txt",
-            "file_bytes": _decode_file_bytes(task_data),
-            "parsed_job": _default_parsed_job(task_data),
-        }
-        graph = build_full_resume_pipeline_graph()
-        return await _run_graph_with_adapter(
-            run_id=run_id,
-            tenant_id=tenant_id,
-            agent_type="resume_parser",
-            raw_task=task,
-            workspace_path=workspace_path,
-            metadata=metadata or {},
-            task_data=task_data,
-            graph=graph,
+    async def _execute(self, task_data: dict[str, Any]) -> dict[str, Any]:
+        parser = ResumeParserAgent()
+        parsed = await parser(
+            {
+                "text": task_data.get("text") or task_data.get("resume_text") or task_data.get("doc_text") or "",
+            }
         )
+        return parsed if isinstance(parsed, dict) else {"parsed_resume": parsed}
 
 
-class ResumeScorerHRAgent:
-    async def run(
-        self,
-        tenant_id: str,
-        task: str,
-        run_id: str,
-        workspace_path: Any,
-        metadata: dict,
-    ) -> _HRAgentResult:
-        task_data = _parse_task_json(task)
-        parsed_job = _default_parsed_job(task_data)
-        task_data = {
-            **task_data,
-            "filename": task_data.get("filename") or "resume.txt",
-            "file_bytes": _decode_file_bytes(task_data),
-            "job_description": task_data.get("job_description") or parsed_job.get("description") or "",
-        }
-        graph = build_resume_scoring_agents_graph()
-        return await _run_graph_with_adapter(
-            run_id=run_id,
-            tenant_id=tenant_id,
-            agent_type="resume_scorer",
-            raw_task=task,
-            workspace_path=workspace_path,
-            metadata=metadata or {},
-            task_data=task_data,
-            graph=graph,
+class EmbeddingHarnessAgent(_HRHarnessAgentBase):
+    agent_type = "embedding"
+
+    async def _execute(self, task_data: dict[str, Any]) -> dict[str, Any]:
+        embedder = EmbeddingAgent()
+        result = await embedder({"embed_text": task_data.get("text") or task_data.get("embed_text") or ""})
+        return result if isinstance(result, dict) else {"embedding": result}
+
+
+class DeduplicationHarnessAgent(_HRHarnessAgentBase):
+    agent_type = "deduplication"
+
+    async def _execute(self, task_data: dict[str, Any]) -> dict[str, Any]:
+        dedup = DeduplicationAgent()
+        result = await dedup(
+            {
+                "content": _decode_file_bytes(task_data),
+                "candidate_email": task_data.get("candidate_email") or task_data.get("email"),
+                "job_id": task_data.get("job_id"),
+                "db": None,
+            }
         )
+        return result if isinstance(result, dict) else {"is_duplicate": False}
 
 
-class JDGeneratorHRAgent:
-    async def run(
-        self,
-        tenant_id: str,
-        task: str,
-        run_id: str,
-        workspace_path: Any,
-        metadata: dict,
-    ) -> _HRAgentResult:
-        task_data = _parse_task_json(task)
-        graph = build_jd_generation_graph()
-        return await _run_graph_with_adapter(
-            run_id=run_id,
-            tenant_id=tenant_id,
-            agent_type="jd_generator",
-            raw_task=task,
-            workspace_path=workspace_path,
-            metadata=metadata or {},
-            task_data=task_data,
-            graph=graph,
+class ResumeScorerHarnessAgent(_HRHarnessAgentBase):
+    agent_type = "resume_scorer"
+
+    async def _execute(self, task_data: dict[str, Any]) -> dict[str, Any]:
+        scorer = ScoringAgent()
+        result = await scorer(
+            {
+                "parsed_resume": task_data.get("parsed_resume") or {},
+                "parsed_job": _build_parsed_job(task_data),
+                "jd_embedding": task_data.get("jd_embedding") or [],
+                "skip_ai_scoring": bool(task_data.get("skip_ai_scoring", False)),
+            }
         )
+        return result if isinstance(result, dict) else {"score_result": result}
 
 
-class JDParserHRAgent:
-    async def run(
-        self,
-        tenant_id: str,
-        task: str,
-        run_id: str,
-        workspace_path: Any,
-        metadata: dict,
-    ) -> _HRAgentResult:
-        started = time.perf_counter()
-        task_data = _parse_task_json(task)
-        parsed_job = await gemini_service.parse_jd_from_document(task_data.get("doc_text") or "")
-        return _HRAgentResult(
-            run_id=run_id,
-            output="ok",
-            success=True,
-            steps=1,
-            elapsed_seconds=max(0.0, time.perf_counter() - started),
-            output_data={"parsed_job": parsed_job},
+class JDParserHarnessAgent(_HRHarnessAgentBase):
+    agent_type = "jd_parser"
+
+    async def _execute(self, task_data: dict[str, Any]) -> dict[str, Any]:
+        parser = JDParserAgent()
+        result = await parser(
+            {
+                "jd_text": task_data.get("doc_text") or task_data.get("jd_text") or task_data.get("job_description") or "",
+            }
         )
+        return result if isinstance(result, dict) else {"parsed_job": result}
 
 
-class QuizGeneratorHRAgent:
-    async def run(
-        self,
-        tenant_id: str,
-        task: str,
-        run_id: str,
-        workspace_path: Any,
-        metadata: dict,
-    ) -> _HRAgentResult:
-        task_data = _parse_task_json(task)
-        graph = build_quiz_generation_graph()
-        return await _run_graph_with_adapter(
-            run_id=run_id,
-            tenant_id=tenant_id,
-            agent_type="quiz_generator",
-            raw_task=task,
-            workspace_path=workspace_path,
-            metadata=metadata or {},
-            task_data=task_data,
-            graph=graph,
+class JDGeneratorHarnessAgent(_HRHarnessAgentBase):
+    agent_type = "jd_generator"
+
+    async def _execute(self, task_data: dict[str, Any]) -> dict[str, Any]:
+        generator = JDGeneratorAgent()
+        result = await generator(
+            {
+                "role": task_data.get("role") or "",
+                "experience_min": _ensure_int(task_data.get("experience_min"), 0),
+                "experience_max": _ensure_int(task_data.get("experience_max"), 5),
+                "location": task_data.get("location") or "Remote",
+                "additional_context": task_data.get("additional_context") or task_data.get("context") or "",
+            }
         )
+        return result if isinstance(result, dict) else {"jd_data": result}
 
 
-class CodeEvaluatorHRAgent:
-    async def run(
-        self,
-        tenant_id: str,
-        task: str,
-        run_id: str,
-        workspace_path: Any,
-        metadata: dict,
-    ) -> _HRAgentResult:
-        task_data = _parse_task_json(task)
-        task_data = {
-            "jd_text": task_data.get("jd_text") or "Coding assessment",
-            "skills": task_data.get("skills") or ["coding"],
-            "easy": int(task_data.get("easy") or 0),
-            "medium": int(task_data.get("medium") or 0),
-            "hard": int(task_data.get("hard") or 0),
-            "answers": task_data.get("answers") or {},
-            "problem_statement": task_data.get("problem_statement") or "",
-            "user_code": task_data.get("user_code") or "",
-            "language": task_data.get("language") or "python",
-        }
-        graph = build_quiz_with_code_eval_graph()
-        return await _run_graph_with_adapter(
-            run_id=run_id,
-            tenant_id=tenant_id,
-            agent_type="code_evaluator",
-            raw_task=task,
-            workspace_path=workspace_path,
-            metadata=metadata or {},
-            task_data=task_data,
-            graph=graph,
+class QuizGeneratorHarnessAgent(_HRHarnessAgentBase):
+    agent_type = "quiz_generator"
+
+    async def _execute(self, task_data: dict[str, Any]) -> dict[str, Any]:
+        quiz = QuizAgent()
+        result = await quiz(
+            {
+                "operation": "generate",
+                "jd_text": task_data.get("jd_text") or "",
+                "skills": _ensure_list(task_data.get("skills")),
+                "easy": _ensure_int(task_data.get("easy"), 8),
+                "medium": _ensure_int(task_data.get("medium"), 8),
+                "hard": _ensure_int(task_data.get("hard"), 4),
+            }
         )
+        return result if isinstance(result, dict) else {"questions": result}
 
 
-class CandidateRankerHRAgent:
-    async def run(
-        self,
-        tenant_id: str,
-        task: str,
-        run_id: str,
-        workspace_path: Any,
-        metadata: dict,
-    ) -> _HRAgentResult:
-        task_data = _parse_task_json(task)
-        task_data = {
-            **task_data,
-            "candidates": task_data.get("candidates") or [],
-            "jd": task_data.get("jd") or {},
-            "use_lyzr": bool(task_data.get("use_lyzr", True)),
-            "notify_on_complete": bool(task_data.get("notify_on_complete", False)),
-        }
-        graph = build_ranking_pipeline_graph()
-        return await _run_graph_with_adapter(
-            run_id=run_id,
-            tenant_id=tenant_id,
-            agent_type="candidate_ranker",
-            raw_task=task,
-            workspace_path=workspace_path,
-            metadata=metadata or {},
-            task_data=task_data,
-            graph=graph,
+class QuizParserHarnessAgent(_HRHarnessAgentBase):
+    agent_type = "quiz_parser"
+
+    async def _execute(self, task_data: dict[str, Any]) -> dict[str, Any]:
+        quiz = QuizAgent()
+        result = await quiz(
+            {
+                "operation": "parse_document",
+                "doc_text": task_data.get("doc_text") or "",
+            }
         )
+        return result if isinstance(result, dict) else {"questions": result}
 
 
-class ResumeEnhancerHRAgent:
-    async def run(
-        self,
-        tenant_id: str,
-        task: str,
-        run_id: str,
-        workspace_path: Any,
-        metadata: dict,
-    ) -> _HRAgentResult:
-        task_data = _parse_task_json(task)
-        task_data = {
-            **task_data,
-            "operation": "enhance_resume",
-            "resume_text": task_data.get("resume_text") or task_data.get("doc_text") or "",
-            "parsed_job": _default_parsed_job(task_data),
-            "parsed_resume": resume_fallback_parser.coerce_parsed_resume(
-                task_data.get("parsed_resume") if isinstance(task_data.get("parsed_resume"), dict) else None,
-                text=task_data.get("resume_text") or task_data.get("doc_text") or "",
-            ),
-        }
-        graph = build_career_tools_graph()
-        return await _run_graph_with_adapter(
-            run_id=run_id,
-            tenant_id=tenant_id,
-            agent_type="resume_enhancer",
-            raw_task=task,
-            workspace_path=workspace_path,
-            metadata=metadata or {},
-            task_data=task_data,
-            graph=graph,
+class CodeEvaluatorHarnessAgent(_HRHarnessAgentBase):
+    agent_type = "code_evaluator"
+
+    async def _execute(self, task_data: dict[str, Any]) -> dict[str, Any]:
+        evaluator = CodeEvaluationAgent()
+        result = await evaluator(
+            {
+                "problem_statement": task_data.get("problem_statement") or task_data.get("problem") or "",
+                "user_code": task_data.get("user_code") or task_data.get("code") or "",
+                "language": task_data.get("language") or "python",
+            }
         )
+        return result if isinstance(result, dict) else {"code_eval_result": result}
 
 
-class ResumeBuilderHRAgent:
-    async def run(
-        self,
-        tenant_id: str,
-        task: str,
-        run_id: str,
-        workspace_path: Any,
-        metadata: dict,
-    ) -> _HRAgentResult:
-        task_data = _parse_task_json(task)
-        task_data = {
-            **task_data,
-            "operation": "build_resume",
-            "candidate_data": task_data.get("candidate_data") or {},
-            "target_role": task_data.get("target_role") or "",
-        }
-        graph = build_career_tools_graph()
-        return await _run_graph_with_adapter(
-            run_id=run_id,
-            tenant_id=tenant_id,
-            agent_type="resume_builder",
-            raw_task=task,
-            workspace_path=workspace_path,
-            metadata=metadata or {},
-            task_data=task_data,
-            graph=graph,
+class CandidateRankerHarnessAgent(_HRHarnessAgentBase):
+    agent_type = "candidate_ranker"
+
+    async def _execute(self, task_data: dict[str, Any]) -> dict[str, Any]:
+        ranker = RankingAgent()
+        result = await ranker(
+            {
+                "jd": task_data.get("jd") or {},
+                "candidates": task_data.get("candidates") or [],
+                "use_lyzr": bool(task_data.get("use_lyzr", True)),
+            }
         )
+        return result if isinstance(result, dict) else {"ranking_result": result}
 
 
-class CoverLetterHRAgent:
-    async def run(
-        self,
-        tenant_id: str,
-        task: str,
-        run_id: str,
-        workspace_path: Any,
-        metadata: dict,
-    ) -> _HRAgentResult:
-        task_data = _parse_task_json(task)
-        resume_text = task_data.get("resume_text") or task_data.get("doc_text") or ""
-        task_data = {
-            **task_data,
-            "operation": "cover_letter",
-            "parsed_job": _default_parsed_job(task_data),
-            "parsed_resume": resume_fallback_parser.coerce_parsed_resume(
-                task_data.get("parsed_resume") if isinstance(task_data.get("parsed_resume"), dict) else None,
-                text=resume_text,
-            ),
-            "candidate_name": task_data.get("candidate_name") or "Candidate",
-            "company_name": task_data.get("company_name") or "the company",
-        }
-        graph = build_career_tools_graph()
-        return await _run_graph_with_adapter(
-            run_id=run_id,
-            tenant_id=tenant_id,
-            agent_type="cover_letter",
-            raw_task=task,
-            workspace_path=workspace_path,
-            metadata=metadata or {},
-            task_data=task_data,
-            graph=graph,
+class ResumeEnhancerHarnessAgent(_HRHarnessAgentBase):
+    agent_type = "resume_enhancer"
+
+    async def _execute(self, task_data: dict[str, Any]) -> dict[str, Any]:
+        enhancer = ResumeEnhancerAgent()
+        result = await enhancer(
+            {
+                "resume_text": task_data.get("resume_text") or "",
+                "parsed_job": _build_parsed_job(task_data),
+                "parsed_resume": task_data.get("parsed_resume") or {},
+            }
         )
+        return result if isinstance(result, dict) else {"enhancement_result": result}
 
 
-class EmbeddingHRAgent:
-    async def run(
-        self,
-        tenant_id: str,
-        task: str,
-        run_id: str,
-        workspace_path: Any,
-        metadata: dict,
-    ) -> _HRAgentResult:
-        started = time.perf_counter()
-        task_data = _parse_task_json(task)
-        text = str(task_data.get("text") or "")
-        embedding = await gemini_service.get_embedding(text)
-        return _HRAgentResult(
-            run_id=run_id,
-            output="ok",
-            success=True,
-            steps=1,
-            elapsed_seconds=max(0.0, time.perf_counter() - started),
-            output_data={"embedding": embedding},
+class ResumeBuilderHarnessAgent(_HRHarnessAgentBase):
+    agent_type = "resume_builder"
+
+    async def _execute(self, task_data: dict[str, Any]) -> dict[str, Any]:
+        builder = ResumeBuilderAgent()
+        result = await builder(
+            {
+                "candidate_data": task_data.get("candidate_data") or {},
+                "target_role": task_data.get("target_role") or "",
+            }
         )
+        return result if isinstance(result, dict) else {"built_resume": result}
 
 
-class NotificationHRAgent:
-    async def run(
-        self,
-        tenant_id: str,
-        task: str,
-        run_id: str,
-        workspace_path: Any,
-        metadata: dict,
-    ) -> _HRAgentResult:
-        started = time.perf_counter()
-        task_data = _parse_task_json(task)
-        result = await NotificationAgent()(task_data)
-        return _HRAgentResult(
-            run_id=run_id,
-            output="ok",
-            success=True,
-            steps=1,
-            elapsed_seconds=max(0.0, time.perf_counter() - started),
-            output_data=result if isinstance(result, dict) else {"result": result},
+class CoverLetterHarnessAgent(_HRHarnessAgentBase):
+    agent_type = "cover_letter"
+
+    async def _execute(self, task_data: dict[str, Any]) -> dict[str, Any]:
+        cover = CoverLetterAgent()
+        parsed_resume = task_data.get("parsed_resume") or {}
+        parsed_job = _build_parsed_job(task_data)
+        result = await cover(
+            {
+                "parsed_resume": parsed_resume,
+                "parsed_job": parsed_job,
+                "candidate_name": task_data.get("candidate_name") or parsed_resume.get("name") or "Candidate",
+                "company_name": task_data.get("company_name") or "the company",
+            }
         )
+        return result if isinstance(result, dict) else {"cover_letter": result}
 
 
-class DeduplicationHRAgent:
-    async def run(
-        self,
-        tenant_id: str,
-        task: str,
-        run_id: str,
-        workspace_path: Any,
-        metadata: dict,
-    ) -> _HRAgentResult:
-        started = time.perf_counter()
-        task_data = _parse_task_json(task)
+class CareerAnalystHarnessAgent(_HRHarnessAgentBase):
+    agent_type = "career_analyst"
+
+    async def _execute(self, task_data: dict[str, Any]) -> dict[str, Any]:
+        analyst = CareerAnalystAgent()
+        result = await analyst(
+            {
+                "candidate_name": task_data.get("candidate_name") or "Candidate",
+                "target_role": task_data.get("target_role") or "Software Engineer",
+                "experience_years": _ensure_float(task_data.get("exp_years", task_data.get("experience_years")), 0.0),
+                "skills": task_data.get("skills") or [],
+                "work_history": task_data.get("work_history") or [],
+                "education": task_data.get("education") or [],
+                "career_breaks": task_data.get("career_breaks") or [],
+            }
+        )
+        return result if isinstance(result, dict) else {"career_analysis": result}
+
+
+class HREmailDraftHarnessAgent(_HRHarnessAgentBase):
+    agent_type = "hr_email_draft"
+
+    async def _execute(self, task_data: dict[str, Any]) -> dict[str, Any]:
+        notifier = NotificationAgent()
+        result = await notifier(
+            {
+                "operation": "hr_email_draft",
+                "email_type": task_data.get("email_type") or "general",
+                "candidate_name": task_data.get("candidate_name") or "Candidate",
+                "job_title": task_data.get("job_title") or "Role",
+                "resume_score": _ensure_float(task_data.get("resume_score"), 0.0),
+                "quiz_score": _ensure_float(task_data.get("quiz_score"), 0.0),
+                "to_email": task_data.get("to_email") or "",
+            }
+        )
+        return result if isinstance(result, dict) else {"email_draft": result}
+
+
+class ResumePipelineHarnessAgent(_HRHarnessAgentBase):
+    agent_type = "resume_pipeline"
+
+    async def _execute(self, task_data: dict[str, Any]) -> dict[str, Any]:
         content = _decode_file_bytes(task_data)
-        result = await DeduplicationAgent()({**task_data, "content": content})
-        return _HRAgentResult(
-            run_id=run_id,
-            output="ok",
-            success=True,
-            steps=1,
-            elapsed_seconds=max(0.0, time.perf_counter() - started),
-            output_data=result if isinstance(result, dict) else {"result": result},
-        )
+        if not content:
+            raise ValueError("resume_pipeline requires content_b64 or file_bytes_b64")
+
+        filename = str(task_data.get("filename") or "resume.pdf")
+        parsed_job = _build_parsed_job(task_data)
+
+        state: dict[str, Any] = {
+            "filename": filename,
+            "content": content,
+            "parsed_job": parsed_job,
+            "job_id": task_data.get("job_id"),
+            "candidate_email": task_data.get("candidate_email"),
+            "skip_ai_scoring": bool(task_data.get("skip_ai_scoring", False)),
+        }
+
+        extractor = FileExtractionAgent()
+        parser = ResumeParserAgent()
+        embedder = EmbeddingAgent()
+        dedup = DeduplicationAgent()
+        scorer = ScoringAgent()
+
+        state.update(await extractor(state))
+        state.update(await parser(state))
+        state.update(await embedder(state))
+        state.update(await dedup(state))
+        state.update(await scorer(state))
+        return state
 
 
-class CareerAnalystHRAgent:
-    async def run(
-        self,
-        tenant_id: str,
-        task: str,
-        run_id: str,
-        workspace_path: Any,
-        metadata: dict,
-    ) -> _HRAgentResult:
-        started = time.perf_counter()
-        task_data = _parse_task_json(task)
-        resume_text = str(task_data.get("resume_text") or task_data.get("doc_text") or "")
-        parsed = resume_fallback_parser.coerce_parsed_resume(None, text=resume_text)
-        analysis = await gemini_service.analyze_career_path(
-            candidate_name=task_data.get("candidate_name") or parsed.get("name") or "Candidate",
-            exp_years=float(parsed.get("experience_years") or task_data.get("experience_years") or 0.0),
-            skills=parsed.get("normalized_skills") or parsed.get("skills") or [],
-            work_history=parsed.get("work_experience") or [],
-            education=parsed.get("education") or [],
-            career_breaks=parsed.get("career_breaks") or [],
-            target_role=str(task_data.get("target_role") or ""),
-        )
-        return _HRAgentResult(
-            run_id=run_id,
-            output="ok",
-            success=True,
-            steps=1,
-            elapsed_seconds=max(0.0, time.perf_counter() - started),
-            output_data={"career_analysis": analysis},
-        )
-
-
-_HR_AGENT_FACTORY: dict[str, type] = {
-    "resume_parser": ResumeParserHRAgent,
-    "resume_scorer": ResumeScorerHRAgent,
-    "jd_generator": JDGeneratorHRAgent,
-    "jd_parser": JDParserHRAgent,
-    "quiz_generator": QuizGeneratorHRAgent,
-    "code_evaluator": CodeEvaluatorHRAgent,
-    "candidate_ranker": CandidateRankerHRAgent,
-    "resume_enhancer": ResumeEnhancerHRAgent,
-    "resume_builder": ResumeBuilderHRAgent,
-    "cover_letter": CoverLetterHRAgent,
-    "embedding": EmbeddingHRAgent,
-    "notification": NotificationHRAgent,
-    "deduplication": DeduplicationHRAgent,
-    "career_analyst": CareerAnalystHRAgent,
+_HR_AGENT_FACTORY: dict[str, type[_HRHarnessAgentBase]] = {
+    ResumeParserHarnessAgent.agent_type: ResumeParserHarnessAgent,
+    EmbeddingHarnessAgent.agent_type: EmbeddingHarnessAgent,
+    DeduplicationHarnessAgent.agent_type: DeduplicationHarnessAgent,
+    ResumeScorerHarnessAgent.agent_type: ResumeScorerHarnessAgent,
+    JDParserHarnessAgent.agent_type: JDParserHarnessAgent,
+    JDGeneratorHarnessAgent.agent_type: JDGeneratorHarnessAgent,
+    QuizGeneratorHarnessAgent.agent_type: QuizGeneratorHarnessAgent,
+    QuizParserHarnessAgent.agent_type: QuizParserHarnessAgent,
+    CodeEvaluatorHarnessAgent.agent_type: CodeEvaluatorHarnessAgent,
+    CandidateRankerHarnessAgent.agent_type: CandidateRankerHarnessAgent,
+    ResumeEnhancerHarnessAgent.agent_type: ResumeEnhancerHarnessAgent,
+    ResumeBuilderHarnessAgent.agent_type: ResumeBuilderHarnessAgent,
+    CoverLetterHarnessAgent.agent_type: CoverLetterHarnessAgent,
+    CareerAnalystHarnessAgent.agent_type: CareerAnalystHarnessAgent,
+    HREmailDraftHarnessAgent.agent_type: HREmailDraftHarnessAgent,
+    ResumePipelineHarnessAgent.agent_type: ResumePipelineHarnessAgent,
 }
 
+HR_AGENT_TYPES: set[str] = set(_HR_AGENT_FACTORY.keys())
 
-def build_hr_agent(agent_type: str):
+
+def build_hr_agent(agent_type: str) -> _HRHarnessAgentBase:
     cls = _HR_AGENT_FACTORY.get(agent_type)
     if cls is None:
-        raise ValueError(f"Unknown HR agent type: {agent_type!r}")
+        raise ValueError(f"Unknown HR harness agent_type: {agent_type!r}")
     return cls()

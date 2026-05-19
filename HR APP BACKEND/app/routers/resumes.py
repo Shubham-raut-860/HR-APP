@@ -3,19 +3,14 @@ Resumes router  upload, bulk-upload, pool management, candidate CRUD.
 """
 
 from app.schemas import (
-    CandidateOut, CandidateListOut, PoolMatchOut,
+    CandidateOut, CandidateListOut, CandidatePipelineListOut, PoolMatchOut,
     MessageResponse
 )
 from app.config import settings
-from app.evals.deepeval_service import evaluator as deepeval_evaluator
 from app.services.mlflow_service import push_eval_to_mlflow as push_eval_to_langfuse  # MLflow replacement
 from app.services.mlflow_service import mlflow_track_llm
 from app.services.notification_service import push_notification, push_to_candidate_by_email
-from app.services.gemini_service import observe  # Real MLflow trace decorator
-from app.services.langfuse_service import langfuse_context
-from app.services import gemini_service, file_service, scoring_service, encryption_service, resume_fallback_parser
-from app.services import harness_agent_client
-from app.services.harness_agent_client import HarnessAgentError
+from app.services.langfuse_service import observe, langfuse_context
 from app.services.auth_service import require_hr, log_action
 from app.routers.resume_pool import ImportFromPoolRequest, import_from_pool_impl
 from app.constants.scoring import (
@@ -33,13 +28,14 @@ from app.constants.rate_limits import (
 from app.limiter import limiter
 from app.models import (
     User, Candidate, JobDescription, NotificationType, UserRole,
-    CandidateTag, AuditLog, QuizAttempt, QuizStatus
+    CandidateTag, AuditLog, BulkUploadJob, QuizAttempt, QuizStatus
 )
 from app.database import get_db, AsyncSessionLocal
 from pydantic import BaseModel
 from typing import List, Literal, Optional
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy import and_, func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload, load_only
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -55,24 +51,106 @@ import os
 import re
 import tempfile
 import time
-from datetime import datetime, timezone
+from importlib import import_module
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
-import httpx
 
 logger = logging.getLogger(__name__)
 
+class _LazyModule:
+    def __init__(self, module_path: str):
+        self._module_path = module_path
+        self._module = None
+
+    def _load(self):
+        if self._module is None:
+            self._module = import_module(self._module_path)
+        return self._module
+
+    def __getattr__(self, item):
+        return getattr(self._load(), item)
+
+
+gemini_service = _LazyModule("app.services.gemini_service")
+file_service = _LazyModule("app.services.file_service")
+scoring_service = _LazyModule("app.services.scoring_service")
+encryption_service = _LazyModule("app.services.encryption_service")
+resume_fallback_parser = _LazyModule("app.services.resume_fallback_parser")
+harness_agent_client = _LazyModule("app.services.harness_agent_client")
+
 
 router = APIRouter(prefix="/resumes", tags=["Resumes"])
+
+# Pipeline list endpoint intentionally omits heavy JSON/blob fields to keep
+# recruiter list payloads small.
+_CANDIDATE_LIST_LOAD_ONLY = (
+    Candidate.id,
+    Candidate.job_id,
+    Candidate.user_id,
+    Candidate.name,
+    Candidate.email,
+    Candidate.phone,
+    Candidate.location,
+    Candidate.normalized_skills,
+    Candidate.experience_years,
+    Candidate.skill_match_pct,
+    Candidate.experience_match_pct,
+    Candidate.resume_score,
+    Candidate.tag,
+    Candidate.quiz_score,
+    Candidate.quiz_max,
+    Candidate.quiz_pct,
+    Candidate.final_score,
+    Candidate.rank,
+    Candidate.created_at,
+    Candidate.is_archived,
+)
+
+# Master archive endpoint keeps richer fields used by export/archive workflows.
+_CANDIDATE_ALL_DATA_LOAD_ONLY = (
+    Candidate.id,
+    Candidate.job_id,
+    Candidate.user_id,
+    Candidate.name,
+    Candidate.email,
+    Candidate.phone,
+    Candidate.location,
+    Candidate.skills,
+    Candidate.normalized_skills,
+    Candidate.experience_years,
+    Candidate.education,
+    Candidate.projects,
+    Candidate.skill_match_pct,
+    Candidate.experience_match_pct,
+    Candidate.project_relevance_pct,
+    Candidate.education_match_pct,
+    Candidate.location_match_pct,
+    Candidate.vector_similarity,
+    Candidate.resume_score,
+    Candidate.score_breakdown,
+    Candidate.career_breaks,
+    Candidate.tag,
+    Candidate.quiz_score,
+    Candidate.quiz_max,
+    Candidate.quiz_pct,
+    Candidate.final_score,
+    Candidate.rank,
+    Candidate.passed,
+    Candidate.created_at,
+    Candidate.is_archived,
+)
 
 
 _EMAIL_RE = re.compile(r"([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[A-Za-z]{2,})")
 _PHONE_RE = re.compile(r"(\+\d[\d\s().-]{8,}\d)")
 _EXP_RE = re.compile(r"(\d{1,2}(:\.\d+))\s*\+\s*(:years|yrs)", re.IGNORECASE)
+_RUNTIME_RANK_ID_RE = re.compile(r"\[cid:([0-9a-fA-F-]{36})\]")
 _BULK_JOB_STATUS: dict[str, dict] = {}
 _BULK_STATUS_PRUNE_HANDLES: dict[str, asyncio.TimerHandle] = {}
 _BULK_STATUS_TTL_SECONDS = 3600
 _BULK_TERMINAL_STATUSES = {"completed", "failed"}
 _BULK_ASYNC_JOB_SEMAPHORE = asyncio.Semaphore(max(1, int(settings.BULK_ASYNC_MAX_CONCURRENT_JOBS)))
+_SHORTLIST_LOCKS: dict[str, asyncio.Lock] = {}
 try:
     _ai_limit_raw = getattr(settings, "AI_CONCURRENT_REQUEST_LIMIT", 10)
     _ai_limit = int(_ai_limit_raw) if _ai_limit_raw is not None else 10
@@ -80,10 +158,30 @@ except (TypeError, ValueError):
     _ai_limit = 10
 _AI_SEMAPHORE = asyncio.Semaphore(max(1, _ai_limit))
 _gemini = gemini_service
+_HARNESS_FALLBACK_LOG_LOCK = asyncio.Lock()
+_HARNESS_FALLBACK_LOG_UNTIL: dict[str, float] = {}
+
+
+def _is_harness_or_timeout_error(exc: Exception) -> bool:
+    return isinstance(exc, asyncio.TimeoutError) or exc.__class__.__name__ == "HarnessAgentError"
+
+
+def _is_harness_unavailable_error(exc: Exception) -> bool:
+    return exc.__class__.__name__ == "HarnessAgentError" and str(getattr(exc, "status", "")) == "harness_unavailable"
 
 
 def _ai_degraded_mode_active() -> bool:
     return bool(settings.AI_FAIL_FAST_ON_UNAVAILABLE and not gemini_service.is_realtime_ai_available())
+
+
+async def _should_log_harness_fallback(agent_type: str, window_s: float = 10.0) -> bool:
+    now = time.monotonic()
+    async with _HARNESS_FALLBACK_LOG_LOCK:
+        until = float(_HARNESS_FALLBACK_LOG_UNTIL.get(agent_type) or 0.0)
+        if now >= until:
+            _HARNESS_FALLBACK_LOG_UNTIL[agent_type] = now + max(2.0, float(window_s))
+            return True
+        return False
 
 
 async def _run_resume_parser_with_fallback(
@@ -91,19 +189,31 @@ async def _run_resume_parser_with_fallback(
     text: str,
     auth_header: str | None = None,
 ) -> dict:
+    parser_timeout_s = min(30.0, max(15.0, float(settings.AI_REQUEST_TIMEOUT_SECONDS) * 2.0))
     try:
-        result = await harness_agent_client.run_agent(
-            "resume_parser",
-            {"doc_text": text},
-            auth_header,
+        result = await asyncio.wait_for(
+            harness_agent_client.run_agent(
+                "resume_parser",
+                {"text": text},
+                auth_header,
+                timeout_s=parser_timeout_s,
+            ),
+            timeout=parser_timeout_s,
         )
-        parsed = result.get("parsed_resume") if isinstance(result, dict) else None
-        if isinstance(parsed, dict):
-            return parsed
-        raise HarnessAgentError("resume_parser", "invalid_result", str(result))
-    except HarnessAgentError as exc:
-        logger.warning("Harness fallback resume_parser: %s", exc)
-        return await _gemini.parse_resume(text)
+        if isinstance(result, dict) and isinstance(result.get("parsed_resume"), dict):
+            return result["parsed_resume"]
+        return result if isinstance(result, dict) else {}
+    except Exception as runtime_exc:
+        if not _is_harness_or_timeout_error(runtime_exc):
+            raise
+        if _is_harness_unavailable_error(runtime_exc):
+            if await _should_log_harness_fallback("resume_parser"):
+                logger.warning("Harness unavailable for resume_parser; using direct parser fallback: %s", runtime_exc)
+            else:
+                logger.debug("Harness unavailable for resume_parser; using direct parser fallback: %s", runtime_exc)
+        else:
+            logger.warning("Harness fallback resume_parser failed, using direct parser: %s", runtime_exc)
+        return await asyncio.wait_for(_gemini.parse_resume(text), timeout=parser_timeout_s)
 
 
 async def _run_embedding_with_fallback(
@@ -111,19 +221,33 @@ async def _run_embedding_with_fallback(
     text: str,
     auth_header: str | None = None,
 ) -> list:
+    embedding_timeout_s = min(30.0, max(12.0, float(settings.AI_REQUEST_TIMEOUT_SECONDS) * 1.75))
     try:
-        result = await harness_agent_client.run_agent(
-            "embedding",
-            {"text": text},
-            auth_header,
+        result = await asyncio.wait_for(
+            harness_agent_client.run_agent(
+                "embedding",
+                {"text": text},
+                auth_header,
+                timeout_s=embedding_timeout_s,
+            ),
+            timeout=embedding_timeout_s,
         )
-        embedding = result.get("embedding") if isinstance(result, dict) else None
-        if isinstance(embedding, list):
-            return embedding
-        raise HarnessAgentError("embedding", "invalid_result", str(result))
-    except HarnessAgentError as exc:
-        logger.warning("Harness fallback embedding: %s", exc)
-        return await _gemini.get_embedding(text)
+        if isinstance(result, dict):
+            emb = result.get("embedding")
+            if isinstance(emb, list):
+                return emb
+        return result if isinstance(result, list) else []
+    except Exception as runtime_exc:
+        if not _is_harness_or_timeout_error(runtime_exc):
+            raise
+        if _is_harness_unavailable_error(runtime_exc):
+            if await _should_log_harness_fallback("embedding"):
+                logger.warning("Harness unavailable for embedding; using direct embedding fallback: %s", runtime_exc)
+            else:
+                logger.debug("Harness unavailable for embedding; using direct embedding fallback: %s", runtime_exc)
+        else:
+            logger.warning("Harness fallback embedding failed, using direct embedding: %s", runtime_exc)
+        return await asyncio.wait_for(_gemini.get_embedding(text), timeout=embedding_timeout_s)
 
 
 async def _run_resume_scorer_with_fallback(
@@ -137,266 +261,87 @@ async def _run_resume_scorer_with_fallback(
     description: str,
     auth_header: str | None = None,
 ) -> dict:
+    scorer_timeout_s = min(30.0, max(15.0, float(settings.AI_REQUEST_TIMEOUT_SECONDS) * 2.0))
+    try:
+        result = await asyncio.wait_for(
+            harness_agent_client.run_agent(
+                "resume_scorer",
+                {
+                    "parsed_resume": parsed_resume,
+                    "job_title": job_title,
+                    "exp_min": exp_min,
+                    "exp_max": exp_max,
+                    "must_have": must_have,
+                    "good_to_have": good_to_have,
+                    "description": description,
+                },
+                auth_header,
+                timeout_s=scorer_timeout_s,
+            ),
+            timeout=scorer_timeout_s,
+        )
+        if isinstance(result, dict) and isinstance(result.get("score_result"), dict):
+            return result["score_result"]
+        return result if isinstance(result, dict) else {}
+    except Exception as runtime_exc:
+        if not _is_harness_or_timeout_error(runtime_exc):
+            raise
+        if _is_harness_unavailable_error(runtime_exc):
+            if await _should_log_harness_fallback("resume_scorer"):
+                logger.warning("Harness unavailable for resume_scorer; using direct scorer fallback: %s", runtime_exc)
+            else:
+                logger.debug("Harness unavailable for resume_scorer; using direct scorer fallback: %s", runtime_exc)
+        else:
+            logger.warning("Harness fallback resume_scorer failed, using direct scorer: %s", runtime_exc)
+        return await asyncio.wait_for(
+            _gemini.score_resume_against_jd(
+                parsed_resume=parsed_resume,
+                job_title=job_title,
+                exp_min=exp_min,
+                exp_max=exp_max,
+                must_have=must_have,
+                good_to_have=good_to_have,
+                description=description,
+            ),
+            timeout=scorer_timeout_s,
+        )
+
+
+async def _run_hr_email_draft_with_fallback(
+    *,
+    email_type: str,
+    candidate_name: str,
+    job_title: str,
+    resume_score: float,
+    quiz_score: float,
+    auth_header: str | None = None,
+) -> dict:
     try:
         result = await harness_agent_client.run_agent(
-            "resume_scorer",
+            "hr_email_draft",
             {
-                "parsed_resume": parsed_resume,
+                "email_type": email_type,
+                "candidate_name": candidate_name,
                 "job_title": job_title,
-                "experience_min": exp_min,
-                "experience_max": exp_max,
-                "must_have_skills": must_have,
-                "good_to_have_skills": good_to_have,
-                "job_description": description,
+                "resume_score": resume_score,
+                "quiz_score": quiz_score,
             },
             auth_header,
         )
-        score_result = result.get("score_result") if isinstance(result, dict) else None
-        if isinstance(score_result, dict):
-            return score_result
-        if isinstance(result, dict) and "resume_score" in result:
-            return result
-        raise HarnessAgentError("resume_scorer", "invalid_result", str(result))
-    except HarnessAgentError as exc:
-        logger.warning("Harness fallback resume_scorer: %s", exc)
-        return await _gemini.score_resume_against_jd(
-            parsed_resume=parsed_resume,
+        if isinstance(result, dict) and isinstance(result.get("draft"), dict):
+            return result["draft"]
+        return result if isinstance(result, dict) else {}
+    except Exception as runtime_exc:
+        if not _is_harness_or_timeout_error(runtime_exc):
+            raise
+        logger.warning("Harness fallback hr_email_draft failed, using direct draft: %s", runtime_exc)
+        return await gemini_service.generate_hr_email(
+            email_type=email_type,
+            candidate_name=candidate_name,
             job_title=job_title,
-            exp_min=exp_min,
-            exp_max=exp_max,
-            must_have=must_have,
-            good_to_have=good_to_have,
-            description=description,
+            resume_score=resume_score,
+            quiz_score=quiz_score,
         )
-
-
-def _harness_base_url() -> str:
-    port = int(getattr(settings, "APP_PORT", 8000) or 8000)
-    return f"http://127.0.0.1:{port}/harness"
-
-
-def _build_harness_resume_scoring_task(
-    filename: str,
-    text: str,
-    parsed_job: dict,
-    parsed_resume: dict,
-) -> str:
-    resume_text = (text or "")[:12000]
-    task_spec = {
-        "filename": filename,
-        "job": parsed_job,
-        "resume": parsed_resume,
-    }
-    return (
-        "You are an HR resume scoring agent.\n"
-        "Score this resume against the provided job and return ONLY strict JSON.\n"
-        "Required JSON keys: "
-        "resume_score, skill_match_pct, experience_match_pct, project_relevance_pct, "
-        "education_match_pct, location_match_pct, vector_similarity, tag, "
-        "matched_must_have, missing_must_have, matched_good_to_have, missing_good_to_have, "
-        "reasoning, domain_fit, seniority_match, hire_recommendation, red_flags, "
-        "standout_factors, confidence, candidate_tier, ai_score_used.\n"
-        "Rules: all scores must be numeric 0-100, tag must be one of strong|medium|reject.\n"
-        f"Job + parsed resume context JSON:\n{json.dumps(task_spec, ensure_ascii=False)}\n"
-        f"Raw resume text excerpt:\n{resume_text}\n"
-    )
-
-
-def _extract_harness_score_result(payload: dict) -> dict | None:
-    if not isinstance(payload, dict):
-        return None
-    result = payload.get("result")
-    candidates: list[dict] = []
-    if isinstance(result, dict):
-        candidates.append(result)
-        nested = result.get("score_result")
-        if isinstance(nested, dict):
-            candidates.append(nested)
-        for key in ("output", "final_output", "data", "response"):
-            raw = result.get(key)
-            if isinstance(raw, dict):
-                candidates.append(raw)
-            elif isinstance(raw, str):
-                try:
-                    parsed = json.loads(raw)
-                except Exception:
-                    parsed = None
-                if isinstance(parsed, dict):
-                    candidates.append(parsed)
-
-    for candidate in candidates:
-        if "resume_score" in candidate:
-            return candidate
-    return None
-
-
-def _coerce_harness_pct(value: object) -> float:
-    try:
-        return float(value or 0.0)
-    except Exception:
-        return 0.0
-
-
-def _mlflow_log_harness_response(
-    *,
-    event: str,
-    status_code: int,
-    run_id: str | None = None,
-    run_status: str | None = None,
-) -> None:
-    mlflow_uri = (os.environ.get("MLFLOW_TRACKING_URI") or "").strip()
-    if not settings.HARNESS_TRACE_RECORDER_ENABLED or not mlflow_uri:
-        return
-    try:
-        import mlflow
-
-        mlflow.log_metric(f"harness.{event}.http_status_code", float(status_code))
-        if run_id:
-            mlflow.log_param("harness.run_id", run_id)
-        if run_status:
-            status_codes = {
-                "queued": 1.0,
-                "running": 2.0,
-                "completed": 3.0,
-                "failed": 4.0,
-                "cancelled": 5.0,
-                "budget_exceeded": 6.0,
-            }
-            mlflow.log_metric(
-                f"harness.{event}.run_status_code",
-                status_codes.get(run_status.lower(), 0.0),
-            )
-    except Exception:
-        # MLflow tracing must remain non-fatal for recruiter flows.
-        pass
-
-
-async def _post_harness_run_for_scoring(
-    *,
-    task: str,
-    tenant_id: str,
-    auth_header: str | None,
-    metadata: dict,
-) -> dict | None:
-    base_url = _harness_base_url()
-    headers = {"Content-Type": "application/json"}
-    if auth_header:
-        headers["Authorization"] = auth_header
-
-    payload = {
-        "agent_type": "base",
-        "task": task,
-        "tenant_id": tenant_id,
-        "context": metadata,
-        "metadata": metadata,
-    }
-
-    async def _run_call() -> dict | None:
-        timeout_s = max(5.0, float(getattr(settings, "AI_REQUEST_TIMEOUT_SECONDS", 12.0)))
-        timeout = httpx.Timeout(timeout_s)
-
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            create_resp = await client.post(f"{base_url}/runs", json=payload, headers=headers)
-            _mlflow_log_harness_response(
-                event="create_run",
-                status_code=create_resp.status_code,
-            )
-            # Compatibility fallback: some harness builds only allow sql/code.
-            if create_resp.status_code >= 400:
-                text = create_resp.text or ""
-                if create_resp.status_code == 400 and "Unknown agent_type" in text:
-                    payload_sql = {**payload, "agent_type": "sql"}
-                    create_resp = await client.post(
-                        f"{base_url}/runs",
-                        json=payload_sql,
-                        headers=headers,
-                    )
-                    _mlflow_log_harness_response(
-                        event="create_run_retry_sql",
-                        status_code=create_resp.status_code,
-                    )
-
-            if create_resp.status_code >= 400:
-                logger.warning(
-                    "Harness create-run failed status=%s body=%s",
-                    create_resp.status_code,
-                    (create_resp.text or "")[:500],
-                )
-                return None
-
-            try:
-                run_record = create_resp.json()
-            except Exception:
-                logger.warning("Harness create-run response was not valid JSON")
-                return None
-
-            if not isinstance(run_record, dict):
-                logger.warning("Harness create-run response shape invalid: %s", type(run_record).__name__)
-                return None
-
-            score_result = _extract_harness_score_result(run_record)
-            if score_result is not None:
-                return score_result
-
-            run_id = str(run_record.get("run_id") or "").strip()
-            if not run_id:
-                return None
-
-            deadline = time.monotonic() + min(30.0, timeout_s * 2.0)
-            terminal_statuses = {"completed", "failed", "cancelled", "budget_exceeded"}
-
-            while time.monotonic() < deadline:
-                await asyncio.sleep(0.6)
-                status_resp = await client.get(f"{base_url}/runs/{run_id}", headers=headers)
-                _mlflow_log_harness_response(
-                    event="poll_run",
-                    status_code=status_resp.status_code,
-                    run_id=run_id,
-                )
-                if status_resp.status_code >= 400:
-                    logger.warning(
-                        "Harness run polling failed run_id=%s status=%s",
-                        run_id,
-                        status_resp.status_code,
-                    )
-                    return None
-                try:
-                    poll_record = status_resp.json()
-                except Exception:
-                    logger.warning("Harness poll response was not valid JSON run_id=%s", run_id)
-                    return None
-                if not isinstance(poll_record, dict):
-                    return None
-
-                score_result = _extract_harness_score_result(poll_record)
-                if score_result is not None:
-                    return score_result
-
-                status_value = str(poll_record.get("status") or "").lower()
-                _mlflow_log_harness_response(
-                    event="poll_run_state",
-                    status_code=200,
-                    run_id=run_id,
-                    run_status=status_value,
-                )
-                if status_value in terminal_statuses:
-                    return None
-
-            logger.warning("Harness run timed out waiting for score_result")
-            return None
-
-    mlflow_uri = (os.environ.get("MLFLOW_TRACKING_URI") or "").strip()
-    if settings.HARNESS_TRACE_RECORDER_ENABLED and mlflow_uri:
-        async with mlflow_track_llm(
-            task_name="harness_runs_post",
-            run_name="harness_resume_scoring",
-            tags={
-                "component": "resumes",
-                "orchestrator": "harness_http",
-            },
-        ):
-            return await _run_call()
-    return await _run_call()
 
 
 def _job_has_meaningful_criteria(job: JobDescription) -> bool:
@@ -418,6 +363,7 @@ def _set_bulk_job_status(run_id: str, **fields) -> None:
     merged = {**current, **fields}
     merged["updated_at"] = _now_iso()
     _BULK_JOB_STATUS[run_id] = merged
+    _schedule_bulk_status_prune(run_id, merged)
 
 
 def _parse_bulk_status_time(value: str | None) -> datetime | None:
@@ -480,7 +426,7 @@ def _schedule_bulk_status_prune(run_id: str, status: dict) -> None:
         return
 
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
     except RuntimeError:
         return
     _BULK_STATUS_PRUNE_HANDLES[run_id] = loop.call_later(delay, _prune_bulk_status_if_expired, run_id)
@@ -488,13 +434,50 @@ def _schedule_bulk_status_prune(run_id: str, status: dict) -> None:
 
 async def _persist_bulk_job_status(run_id: str) -> None:
     """
-    Persist async bulk-job status in DB (audit_logs.details) so state survives
-    process restarts and can be polled from any app instance.
+    Persist async bulk-job status in DB so state survives process restarts and
+    can be polled from any app instance.
     """
     snapshot = _BULK_JOB_STATUS.get(run_id)
     if not snapshot:
         return
     async with AsyncSessionLocal() as s:
+        progress = snapshot.get("progress") if isinstance(snapshot.get("progress"), dict) else {}
+        total = int(progress.get("total") or snapshot.get("requested_count") or 0)
+        processed = int(progress.get("processed") or 0)
+        failed = int(progress.get("failed_count") or snapshot.get("rejected_count") or 0)
+        last_committed_batch = int(snapshot.get("last_committed_batch") or 0)
+        error_summary = {
+            "error": snapshot.get("error"),
+            "failed_count": failed,
+            "duplicate_count": int(progress.get("duplicate_count") or 0),
+        }
+        bulk_row = await s.get(BulkUploadJob, run_id)
+        if bulk_row:
+            bulk_row.status = str(snapshot.get("status") or bulk_row.status or "queued")
+            bulk_row.job_id = snapshot.get("job_id")
+            bulk_row.created_by = snapshot.get("owner_user_id")
+            bulk_row.total = total
+            bulk_row.processed = processed
+            bulk_row.failed = failed
+            bulk_row.last_committed_batch = last_committed_batch
+            bulk_row.error_summary = error_summary
+            bulk_row.details = dict(snapshot)
+        else:
+            s.add(
+                BulkUploadJob(
+                    id=run_id,
+                    status=str(snapshot.get("status") or "queued"),
+                    created_by=snapshot.get("owner_user_id"),
+                    job_id=snapshot.get("job_id"),
+                    total=total,
+                    processed=processed,
+                    failed=failed,
+                    last_committed_batch=last_committed_batch,
+                    error_summary=error_summary,
+                    details=dict(snapshot),
+                )
+            )
+
         row = (await s.execute(
             select(AuditLog).where(
                 AuditLog.action == "BULK_UPLOAD_ASYNC",
@@ -516,6 +499,29 @@ async def _persist_bulk_job_status(run_id: str) -> None:
 
 
 async def _load_bulk_job_status(run_id: str, db: AsyncSession) -> dict | None:
+    bulk_row = await db.get(BulkUploadJob, run_id)
+    if bulk_row is not None:
+        if isinstance(bulk_row.details, dict):
+            _BULK_JOB_STATUS[run_id] = dict(bulk_row.details)
+            return _BULK_JOB_STATUS[run_id]
+        payload = {
+            "id": bulk_row.id,
+            "status": bulk_row.status,
+            "job_id": bulk_row.job_id,
+            "owner_user_id": bulk_row.created_by,
+            "progress": {
+                "processed": bulk_row.processed,
+                "total": bulk_row.total,
+                "failed_count": bulk_row.failed,
+            },
+            "last_committed_batch": bulk_row.last_committed_batch,
+            "error": (bulk_row.error_summary or {}).get("error"),
+            "updated_at": bulk_row.updated_at.isoformat() if bulk_row.updated_at else None,
+            "created_at": bulk_row.created_at.isoformat() if bulk_row.created_at else None,
+        }
+        _BULK_JOB_STATUS[run_id] = payload
+        return payload
+
     row = (await db.execute(
         select(AuditLog).where(
             AuditLog.action == "BULK_UPLOAD_ASYNC",
@@ -524,8 +530,76 @@ async def _load_bulk_job_status(run_id: str, db: AsyncSession) -> dict | None:
         )
     )).scalar_one_or_none()
     if row and isinstance(row.details, dict):
-        return row.details
-    return _BULK_JOB_STATUS.get(run_id)
+        _BULK_JOB_STATUS[run_id] = dict(row.details)
+        return _BULK_JOB_STATUS[run_id]
+    in_mem = _BULK_JOB_STATUS.get(run_id)
+    if in_mem:
+        try:
+            await _persist_bulk_job_status(run_id)
+        except Exception as exc:
+            logger.debug("Best-effort bulk status persistence failed for %s: %s", run_id, exc)
+    return in_mem
+
+
+async def recover_stale_bulk_upload_jobs(grace_minutes: int = 15) -> int:
+    """
+    Mark queued/running bulk jobs as failed after restart when they are stale.
+    This prevents permanent "running" states after process rotation/crash.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=max(1, int(grace_minutes)))
+    recovered = 0
+
+    async with AsyncSessionLocal() as s:
+        rows = (
+            await s.execute(
+                select(BulkUploadJob).where(
+                    BulkUploadJob.status.in_(["queued", "running"]),
+                    BulkUploadJob.updated_at < cutoff,
+                )
+            )
+        ).scalars().all()
+        if not rows:
+            return 0
+
+        for row in rows:
+            details = dict(row.details or {})
+            details["status"] = "failed"
+            details["completed_at"] = _now_iso()
+            details["error"] = "recovered_from_restart"
+            details["updated_at"] = _now_iso()
+
+            progress = details.get("progress") if isinstance(details.get("progress"), dict) else {}
+            progress["failed_count"] = max(
+                int(progress.get("failed_count") or 0),
+                int(row.failed or 0),
+            )
+            details["progress"] = progress
+
+            temp_paths = details.get("temp_paths")
+            if isinstance(temp_paths, list):
+                for path in temp_paths:
+                    try:
+                        os.unlink(str(path))
+                    except FileNotFoundError:
+                        continue
+                    except Exception as exc:
+                        logger.warning("Failed to cleanup stale temp file %s: %s", path, exc)
+
+            row.status = "failed"
+            row.failed = int(progress.get("failed_count") or row.failed or 0)
+            row.error_summary = {
+                "error": "recovered_from_restart",
+                "failed_count": row.failed,
+            }
+            row.details = details
+            _BULK_JOB_STATUS[row.id] = details
+            recovered += 1
+
+        await s.commit()
+
+    if recovered:
+        logger.warning("Recovered %d stale bulk upload jobs after restart.", recovered)
+    return recovered
 
 
 def _normalize_skill_token(skill: str) -> str:
@@ -597,7 +671,58 @@ def _quantile_from_sorted(values_asc: list[float], q: float) -> float:
     return float(values_asc[idx])
 
 
-async def _recompute_job_rank_and_tags(db: AsyncSession, job: JobDescription) -> None:
+def _extract_runtime_rank_candidate_id(candidate_name: str | None) -> str | None:
+    if not candidate_name:
+        return None
+    match = _RUNTIME_RANK_ID_RE.search(str(candidate_name))
+    if not match:
+        return None
+    return match.group(1)
+
+
+def _build_runtime_rank_payload(
+    *,
+    job: JobDescription,
+    candidates: list[Candidate],
+) -> tuple[dict[str, object], list[dict[str, object]], dict[str, Candidate]]:
+    jd_payload: dict[str, object] = {
+        "title": job.title or job.role or "Job",
+        "required_skills": list(job.must_have_skills or []),
+        "experience_min": float(job.experience_min or 0),
+        "experience_max": float(job.experience_max or 0),
+        "description": job.description or "",
+    }
+
+    ranked_candidates_payload: list[dict[str, object]] = []
+    id_to_candidate: dict[str, Candidate] = {}
+    for candidate in candidates:
+        candidate_id = str(candidate.id)
+        display_name = str(candidate.name or "Candidate").strip() or "Candidate"
+        payload_name = f"{display_name} [cid:{candidate_id}]"
+        skills = candidate.normalized_skills or candidate.skills or []
+        summary = (candidate.raw_resume_text or "").strip()
+        ranked_candidates_payload.append(
+            {
+                "name": payload_name,
+                "skills": [str(skill) for skill in skills if skill],
+                "experience_years": float(candidate.experience_years or 0.0),
+                "resume_score": float(candidate.resume_score or 0.0),
+                "final_score": float(candidate.final_score) if candidate.final_score is not None else None,
+                "summary": summary[:1200],
+            }
+        )
+        id_to_candidate[candidate_id] = candidate
+    return jd_payload, ranked_candidates_payload, id_to_candidate
+
+
+async def _recompute_job_rank_and_tags(
+    db: AsyncSession,
+    job: JobDescription,
+    *,
+    strong_threshold: float | None = None,
+    medium_threshold: float | None = None,
+    auth_header: str | None = None,
+) -> None:
     """
     Re-rank and re-tag candidates for a job with cohort-relative thresholds.
     This keeps shortlist quality stable and prevents universal "Strong" inflation.
@@ -612,24 +737,89 @@ async def _recompute_job_rank_and_tags(db: AsyncSession, job: JobDescription) ->
         return
 
     candidates_sorted = sorted(candidates, key=_job_candidate_score, reverse=True)
+    ranking_source = "score_fallback"
+    runtime_error: str | None = None
+
+    try:
+        jd_payload, candidate_payload, id_to_candidate = _build_runtime_rank_payload(
+            job=job,
+            candidates=candidates,
+        )
+        ranking_result = await harness_agent_client.run_agent(
+            "candidate_ranker",
+            {
+                "jd": jd_payload,
+                "candidates": candidate_payload,
+                "use_lyzr": True,
+            },
+            auth_header,
+        )
+        if isinstance(ranking_result, dict) and isinstance(ranking_result.get("ranking_result"), dict):
+            ranking_result = ranking_result["ranking_result"]
+        ranked_rows = ranking_result.get("results")
+        if isinstance(ranked_rows, list) and ranked_rows:
+            ordered_runtime: list[Candidate] = []
+            seen_ids: set[str] = set()
+            for row in ranked_rows:
+                if not isinstance(row, dict):
+                    continue
+                candidate_id = _extract_runtime_rank_candidate_id(row.get("candidate_name"))
+                if not candidate_id or candidate_id in seen_ids:
+                    continue
+                matched_candidate = id_to_candidate.get(candidate_id)
+                if matched_candidate is None:
+                    continue
+                ordered_runtime.append(matched_candidate)
+                seen_ids.add(candidate_id)
+
+            if ordered_runtime:
+                for fallback_candidate in candidates_sorted:
+                    fallback_id = str(fallback_candidate.id)
+                    if fallback_id not in seen_ids:
+                        ordered_runtime.append(fallback_candidate)
+                candidates_sorted = ordered_runtime
+                ranking_source = str(ranking_result.get("source") or "harness")
+    except Exception as runtime_exc:
+        if not _is_harness_or_timeout_error(runtime_exc):
+            raise
+        runtime_error = str(runtime_exc)
+        logger.warning(
+            "Harness ranking failed for job %s, using score fallback: %s",
+            job.id,
+            runtime_exc,
+        )
+    except Exception as exc:
+        runtime_error = str(exc)
+        logger.warning(
+            "Unexpected runtime ranking failure for job %s, using score fallback: %s",
+            job.id,
+            exc,
+        )
+
     scores_desc = [_job_candidate_score(c) for c in candidates_sorted]
     scores_asc = sorted(scores_desc)
 
-    use_dynamic = settings.DYNAMIC_TAGGING_ENABLED and len(candidates_sorted) >= int(settings.DYNAMIC_TAG_MIN_COHORT)
-    if use_dynamic:
-        strong_t = max(
-            float(settings.DYNAMIC_STRONG_FLOOR),
-            _quantile_from_sorted(scores_asc, float(settings.DYNAMIC_STRONG_PERCENTILE)),
-        )
-        medium_t = max(
-            float(settings.DYNAMIC_MEDIUM_FLOOR),
-            _quantile_from_sorted(scores_asc, float(settings.DYNAMIC_MEDIUM_PERCENTILE)),
-        )
-        if medium_t >= strong_t:
-            medium_t = max(float(settings.DYNAMIC_MEDIUM_FLOOR), strong_t - 0.1)
+    use_forced_thresholds = strong_threshold is not None and medium_threshold is not None
+    if use_forced_thresholds:
+        strong_t = float(strong_threshold)
+        medium_t = float(medium_threshold)
+        use_dynamic = False
     else:
-        strong_t = STRONG_SHORTLIST_THRESHOLD
-        medium_t = SCORING_PASS_THRESHOLD
+        use_dynamic = settings.DYNAMIC_TAGGING_ENABLED and len(candidates_sorted) >= int(settings.DYNAMIC_TAG_MIN_COHORT)
+        if use_dynamic:
+            strong_t = max(
+                float(settings.DYNAMIC_STRONG_FLOOR),
+                _quantile_from_sorted(scores_asc, float(settings.DYNAMIC_STRONG_PERCENTILE)),
+            )
+            medium_t = max(
+                float(settings.DYNAMIC_MEDIUM_FLOOR),
+                _quantile_from_sorted(scores_asc, float(settings.DYNAMIC_MEDIUM_PERCENTILE)),
+            )
+            if medium_t >= strong_t:
+                medium_t = max(float(settings.DYNAMIC_MEDIUM_FLOOR), strong_t - 0.1)
+        else:
+            strong_t = STRONG_SHORTLIST_THRESHOLD
+            medium_t = SCORING_PASS_THRESHOLD
 
     n = len(candidates_sorted)
     for idx, c in enumerate(candidates_sorted):
@@ -648,7 +838,11 @@ async def _recompute_job_rank_and_tags(db: AsyncSession, job: JobDescription) ->
             "strong_threshold": round(strong_t, 2),
             "medium_threshold": round(medium_t, 2),
             "dynamic_thresholds": use_dynamic,
+            "ranking_source": ranking_source,
+            "runtime_method": "harness_agent_client.run_agent(candidate_ranker)",
         }
+        if runtime_error:
+            breakdown["ranking"]["ranking_runtime_error"] = runtime_error
         c.score_breakdown = breakdown
 
 
@@ -670,7 +864,7 @@ def _maybe_decrypt_bulk_upload_content(filename: str, ext: str, content: bytes) 
     Mirrors file_service behavior so we fail fast during read batching, before
     expensive text extraction and scoring.
     """
-    if ext == ".txt" or len(content) < 32 or not content.startswith(b"gAAAAA"):
+    if ext == ".txt" or len(content) < 32 or not encryption_service.looks_like_internal_ciphertext(content):
         return content
 
     decrypted = encryption_service.try_decrypt_file(content)
@@ -718,6 +912,31 @@ def _sha256(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
+def _precheck_content_length(headers_obj, max_bytes: int) -> None:
+    """
+    Fast-path size rejection before buffering whole payload into memory.
+    Uses per-part content-length when available.
+    """
+    if not headers_obj:
+        return
+    raw_len = None
+    try:
+        raw_len = headers_obj.get("content-length")
+    except Exception:
+        raw_len = None
+    if not raw_len:
+        return
+    try:
+        hinted = int(raw_len)
+    except (TypeError, ValueError):
+        return
+    if hinted > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large (max {settings.MAX_FILE_SIZE_MB}MB)",
+        )
+
+
 def _normalize_candidate_tag(tag: str | None) -> str | None:
     if tag is None:
         return None
@@ -729,7 +948,12 @@ def _normalize_candidate_tag(tag: str | None) -> str | None:
     return mapping.get(tag.strip().lower(), tag)
 
 
-async def _existing_hashes(db: AsyncSession, hashes: list[str]) -> set[str]:
+async def _existing_hashes(
+    db: AsyncSession,
+    hashes: list[str],
+    *,
+    owner_user_id: str | None = None,
+) -> set[str]:
     """
     Return the subset of hashes that already exist in the candidate POOL
     (job_id IS NULL). Scoped to pool so that uploading the same resume to
@@ -740,16 +964,22 @@ async def _existing_hashes(db: AsyncSession, hashes: list[str]) -> set[str]:
     """
     if not hashes:
         return set()
-    rows = (await db.execute(
-        select(Candidate.file_hash).where(
-            Candidate.file_hash.in_(hashes),
-            Candidate.job_id.is_(None),   # scope to pool only
-        )
-    )).scalars().all()
+    filters = [
+        Candidate.file_hash.in_(hashes),
+        Candidate.job_id.is_(None),
+    ]
+    if owner_user_id:
+        filters.append(Candidate.user_id == str(owner_user_id))
+    rows = (await db.execute(select(Candidate.file_hash).where(*filters))).scalars().all()
     return set(rows)
 
 
-async def _existing_pool_emails(db: AsyncSession, emails: list[str]) -> set[str]:
+async def _existing_pool_emails(
+    db: AsyncSession,
+    emails: list[str],
+    *,
+    owner_user_id: str | None = None,
+) -> set[str]:
     """
     Return the subset of emails that already exist in the candidate pool (job_id IS NULL).
     Used for email-level dedup so the same person can't appear twice in the pool
@@ -760,13 +990,13 @@ async def _existing_pool_emails(db: AsyncSession, emails: list[str]) -> set[str]
     clean = [e.lower().strip() for e in emails if e]
     if not clean:
         return set()
-    from sqlalchemy import func
-    rows = (await db.execute(
-        select(Candidate.email).where(
-            Candidate.job_id.is_(None),
-            func.lower(Candidate.email).in_(clean),
-        )
-    )).scalars().all()
+    filters = [
+        Candidate.job_id.is_(None),
+        func.lower(Candidate.email).in_(clean),
+    ]
+    if owner_user_id:
+        filters.append(Candidate.user_id == str(owner_user_id))
+    rows = (await db.execute(select(Candidate.email).where(*filters))).scalars().all()
     return {r.lower() for r in rows if r}
 
 
@@ -918,22 +1148,74 @@ async def _insert_application_atomic(
     Returns None when (user_id, job_id) already exists.
     """
     dialect = db.get_bind().dialect.name
+    conflict_where = and_(Candidate.user_id.isnot(None), Candidate.job_id.isnot(None))
     if dialect == "postgresql":
         stmt = (
             pg_insert(Candidate)
             .values(**candidate_values)
-            .on_conflict_do_nothing(constraint="uq_application_user_job")
+            .on_conflict_do_nothing(
+                index_elements=[Candidate.user_id, Candidate.job_id],
+                index_where=conflict_where,
+            )
             .returning(Candidate.id)
         )
     elif dialect == "sqlite":
         stmt = (
             sqlite_insert(Candidate)
             .values(**candidate_values)
-            .on_conflict_do_nothing(index_elements=["user_id", "job_id"])
+            .on_conflict_do_nothing(
+                index_elements=["user_id", "job_id"],
+                index_where=conflict_where,
+            )
             .returning(Candidate.id)
         )
     else:
         raise RuntimeError(f"Unsupported database dialect for atomic application insert: {dialect}")
+
+    inserted_id = (await db.execute(stmt)).scalar_one_or_none()
+    if inserted_id is None:
+        return None
+    return await db.get(Candidate, inserted_id)
+
+
+async def _insert_pool_candidate_atomic(
+    db: AsyncSession,
+    candidate_values: dict,
+) -> Candidate | None:
+    """
+    Atomically insert a pool candidate.
+    Returns None when the per-user pool unique index rejects a duplicate.
+    """
+    dialect = db.get_bind().dialect.name
+    conflict_where = and_(
+        Candidate.job_id.is_(None),
+        Candidate.user_id.isnot(None),
+        Candidate.email.isnot(None),
+    )
+    conflict_elements = [func.lower(Candidate.email), Candidate.user_id]
+
+    if dialect == "postgresql":
+        stmt = (
+            pg_insert(Candidate)
+            .values(**candidate_values)
+            .on_conflict_do_nothing(
+                index_elements=conflict_elements,
+                index_where=conflict_where,
+            )
+            .returning(Candidate.id)
+        )
+    elif dialect == "sqlite":
+        stmt = (
+            sqlite_insert(Candidate)
+            .values(**candidate_values)
+            .on_conflict_do_nothing(
+                index_elements=conflict_elements,
+                index_where=conflict_where,
+            )
+            .returning(Candidate.id)
+        )
+    else:
+        raise RuntimeError(f"Unsupported database dialect for atomic pool insert: {dialect}")
 
     inserted_id = (await db.execute(stmt)).scalar_one_or_none()
     if inserted_id is None:
@@ -1154,7 +1436,11 @@ async def _compute_resume_data_from_bytes(
         jd_education_requirement=getattr(job, "education_requirement", None),
     )
     loc_pct = scoring_service.location_match_score(parsed.get("location"), job.location)
-    vec_sim = scoring_service.cosine_similarity(resume_embedding, job.embedding or [])
+    try:
+        vec_sim = scoring_service.cosine_similarity(resume_embedding, job.embedding or [])
+    except ValueError as vec_err:
+        logger.warning("Vector similarity degraded during scoring for job %s: %s", job.id, vec_err)
+        vec_sim = 0.0
     vector_available = bool(resume_embedding) and bool(job.embedding or [])
 
     #  Step 3: AI scoring (skipped on cache hit) 
@@ -1218,6 +1504,9 @@ async def _compute_resume_data_from_bytes(
             phase_c_enabled=bool(settings.PHASE_C_SCORING_ENABLED),
             ai_confidence=str((ai_scores or {}).get("confidence", "")),
             jd_signal_strength=phase_b_meta.get("jd_signal_strength"),
+            required_skills=job.must_have_skills or [],
+            work_experience=parsed.get("work_experience", []),
+            skill_years=skill_years,
         )
     )
 
@@ -1291,6 +1580,9 @@ async def _compute_resume_data_from_bytes(
         location_match_pct=loc_pct,
         vector_similarity=vec_sim,
         resume_score=resume_score,
+        # Keep an authoritative score even before quiz attempts so ranking/analytics
+        # never depend on nullable fields for non-quiz workflows.
+        final_score=resume_score,
         score_breakdown=score_breakdown,
         tag=tag,
     )
@@ -1312,7 +1604,8 @@ async def _compute_resume_data_from_bytes(
     async def _background_deepeval(fname: str, txt: str, desc: str, must_have: list, sk_score: float, ex_score: float, pr_score: float):
         try:
             jd_text_for_eval = desc + " Required skills: " + ", ".join(must_have)
-            _eval_result = await deepeval_evaluator.evaluate_resume_scoring(
+            _deepeval_evaluator = import_module("app.evals.deepeval_service").evaluator
+            _eval_result = await _deepeval_evaluator.evaluate_resume_scoring(
                 resume_text=txt[:3000],
                 jd_text=jd_text_for_eval,
                 scores={
@@ -1343,161 +1636,10 @@ async def _compute_resume_data_from_bytes(
             "candidate_tier": score_breakdown.get("candidate_tier"),
             "from_cache": score_breakdown.get("from_cache", False),
         })
-    except Exception:
-        pass
+    except Exception as trace_exc:
+        logger.debug("Langfuse observation update skipped (non-fatal): %s", trace_exc)
 
     return result
-
-
-@observe(name="resume_parse_harness")
-async def _compute_resume_data_via_harness(
-    filename: str,
-    content: bytes,
-    text: str,
-    job: JobDescription,
-    tenant_id: str,
-    auth_header: str | None = None,
-    user_email: str | None = None,
-    pre_parsed_data: dict | None = None,
-    fast_mode: bool = False,
-) -> dict:
-    """
-    Optional upstream harness path via POST /harness/runs for resume scoring.
-    Falls back to the native scorer if harness execution fails or times out.
-    """
-    if _ai_degraded_mode_active():
-        fast_mode = True
-    if fast_mode:
-        return await _compute_resume_data_from_bytes(
-            filename=filename,
-            content=content,
-            text=text,
-            job=job,
-            cached_candidate=None,
-            user_email=user_email,
-            auth_header=auth_header,
-            pre_parsed_data=pre_parsed_data,
-            fast_mode=True,
-        )
-
-    file_hash = _sha256(content)
-    jd_hash = _jd_signature_hash(job)
-
-    parsed_job = {
-        "id": str(job.id),
-        "title": job.title or "",
-        "role": job.role or "",
-        "description": job.description or "",
-        "experience_min": int(job.experience_min or 0),
-        "experience_max": int(job.experience_max or 5),
-        "must_have_skills": list(job.must_have_skills or []),
-        "good_to_have_skills": list(job.good_to_have_skills or []),
-        "education_requirement": job.education_requirement,
-        "location": job.location,
-    }
-
-    parsed = pre_parsed_data or _coerce_parsed_resume_payload(None, text, job)
-    try:
-        score_result = await harness_agent_client.run_agent(
-            "resume_scorer",
-            {
-                "filename": filename,
-                "parsed_resume": parsed,
-                "job": parsed_job,
-                "job_title": parsed_job.get("title") or "",
-                "experience_min": parsed_job.get("experience_min") or 0,
-                "experience_max": parsed_job.get("experience_max") or 5,
-                "must_have_skills": parsed_job.get("must_have_skills") or [],
-                "good_to_have_skills": parsed_job.get("good_to_have_skills") or [],
-                "job_description": parsed_job.get("description") or "",
-                "doc_text": text[:12000],
-            },
-            auth_header,
-        )
-    except HarnessAgentError as exc:
-        logger.warning("Harness run failed for %s; using native scorer fallback: %s", filename, exc)
-        score_result = None
-    if score_result is None:
-        logger.warning(
-            "Harness run did not return score_result for %s; falling back to native scoring.",
-            filename,
-        )
-        return await _compute_resume_data_from_bytes(
-            filename=filename,
-            content=content,
-            text=text,
-            job=job,
-            cached_candidate=None,
-            user_email=user_email,
-            auth_header=auth_header,
-            pre_parsed_data=pre_parsed_data,
-            fast_mode=fast_mode,
-        )
-    resume_embedding = score_result.get("embedding") if isinstance(score_result.get("embedding"), list) else []
-
-    resume_path = await file_service.save_file(content, filename)
-
-    exp_years = float(parsed.get("experience_years") or 0.0)
-    skill_years = parsed.get("skill_years") or {}
-    detect_resume_gaps = getattr(scoring_service, "detect_resume_gaps", None)
-    if callable(detect_resume_gaps):
-        manual_career_breaks = detect_resume_gaps(parsed.get("work_experience") or [])
-    else:
-        manual_career_breaks = []
-    tag_raw = _normalize_candidate_tag(score_result.get("tag"))
-    tag_value = (tag_raw or "").strip().lower()
-    tag = CandidateTag(tag_value) if tag_value in {"strong", "medium", "reject"} else None
-
-    score_breakdown = {
-        "ai_score_used": bool(score_result.get("ai_score_used")),
-        "matched_must_have": score_result.get("matched_must_have", []),
-        "missing_must_have": score_result.get("missing_must_have", []),
-        "matched_good_to_have": score_result.get("matched_good_to_have", []),
-        "missing_good_to_have": score_result.get("missing_good_to_have", []),
-        "reasoning": score_result.get("reasoning", ""),
-        "domain_fit": score_result.get("domain_fit", "exact"),
-        "seniority_match": score_result.get("seniority_match", "exact"),
-        "hire_recommendation": score_result.get("hire_recommendation", "maybe"),
-        "red_flags": score_result.get("red_flags", []),
-        "standout_factors": score_result.get("standout_factors", []),
-        "confidence": score_result.get("confidence", "medium"),
-        "candidate_tier": score_result.get("candidate_tier")
-        or scoring_service.detect_candidate_tier(exp_years),
-        "from_cache": False,
-        "fast_mode": bool(fast_mode),
-        "degraded_mode": bool(fast_mode and _ai_degraded_mode_active()),
-        "ocr_truncated": "[SYSTEM: OCR_TRUNCATED]" in text,
-        "jd_hash": jd_hash,
-    }
-
-    return {
-        "file_hash": file_hash,
-        "job_id": job.id,
-        "name": parsed.get("name"),
-        "email": parsed.get("email"),
-        "phone": parsed.get("phone"),
-        "location": parsed.get("location"),
-        "skills": parsed.get("skills", []),
-        "normalized_skills": parsed.get("normalized_skills", []),
-        "experience_years": exp_years,
-        "education": parsed.get("education", []),
-        "projects": parsed.get("projects", []),
-        "work_experience": parsed.get("work_experience", []),
-        "career_breaks": (manual_career_breaks or []) + parsed.get("career_breaks", []),
-        "skill_years": skill_years,
-        "raw_resume_text": encryption_service.encrypt_text(text[:40000]),
-        "resume_path": resume_path,
-        "embedding": resume_embedding,
-        "skill_match_pct": _coerce_harness_pct(score_result.get("skill_match_pct")),
-        "experience_match_pct": _coerce_harness_pct(score_result.get("experience_match_pct")),
-        "project_relevance_pct": _coerce_harness_pct(score_result.get("project_relevance_pct")),
-        "education_match_pct": _coerce_harness_pct(score_result.get("education_match_pct")),
-        "location_match_pct": _coerce_harness_pct(score_result.get("location_match_pct")),
-        "vector_similarity": _coerce_harness_pct(score_result.get("vector_similarity")),
-        "resume_score": _coerce_harness_pct(score_result.get("resume_score")),
-        "score_breakdown": score_breakdown,
-        "tag": tag,
-    }
 
 
 @observe(name="pool_resume_parse")
@@ -1542,10 +1684,15 @@ async def _compute_pool_resume_data_from_bytes(
         return_exceptions=True,
     )
 
-    # FIX: use None instead of "" when save_file fails
     if isinstance(resume_path, Exception):
-        logger.warning("[WARN] save_file failed for %s: %s", filename, resume_path)
-        resume_path = None
+        logger.error(
+            "[ERROR] Pool save_file failed for %s - aborting candidate save: %s",
+            filename,
+            resume_path,
+        )
+        raise RuntimeError(
+            f"Resume file could not be saved for '{filename}': {resume_path}"
+        ) from resume_path
 
     if isinstance(parsed, Exception):
         raise parsed
@@ -1599,15 +1746,20 @@ async def upload_resume(
             ),
         )
 
-    # BUG-1 FIX: Enforce MAX_FILE_SIZE_MB from config instead of hardcoded 10MB.
-    # settings.MAX_FILE_SIZE_MB = 20 but was silently ignored everywhere.
     _max_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
+    _precheck_content_length(file.headers, _max_bytes)
+    _precheck_content_length(request.headers, _max_bytes)
+
     content_arr = bytearray()
     while chunk := await file.read(1024 * 1024):
         content_arr.extend(chunk)
         if len(content_arr) > _max_bytes:
             raise HTTPException(status_code=413, detail=f"File too large (max {settings.MAX_FILE_SIZE_MB}MB)")
-    content = bytes(content_arr)
+    raw_content = bytes(content_arr)
+    text, content = await file_service.extract_text_normalised_from_bytes(
+        file.filename or "resume.pdf",
+        raw_content,
+    )
     file_hash = _sha256(content)
 
     # Single query: check for duplicate AND serve as AI score cache lookup.
@@ -1629,10 +1781,6 @@ async def upload_resume(
     # cached_row is always None here (the 409 guard above would have fired if one
     # existed). Keep the variable for the _compute_resume_data_from_bytes signature.
     cached_row = None
-
-    import io
-    file.file = io.BytesIO(content)
-    text, _ = await file_service.extract_text(file)
 
     degraded_mode = _ai_degraded_mode_active()
     if degraded_mode:
@@ -1678,9 +1826,20 @@ async def upload_resume(
     # candidate self-apply flows. Recruiter pipeline uploads must allow many
     # candidates per job, so do not set recruiter user_id on job candidates.
     candidate = Candidate(**data, user_id=None)
-    db.add(candidate)
-    await db.flush()
-    await _recompute_job_rank_and_tags(db, job)
+    try:
+        db.add(candidate)
+        await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="A candidate with the same email already exists for this job.",
+        ) from exc
+    await _recompute_job_rank_and_tags(
+        db,
+        job,
+        auth_header=request.headers.get("authorization"),
+    )
     await log_action(db, user.id, "UPLOAD_RESUME", "candidate", candidate.id)
     await db.commit()
     await db.refresh(candidate)
@@ -1702,15 +1861,19 @@ async def upload_pool_single(
             detail=f"File type '{_raw_ext or '(none)'}' is not allowed.",
         )
     try:
-        # BUG-1 FIX: use config instead of hardcoded 10MB
         _max_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
+        _precheck_content_length(file.headers, _max_bytes)
+        _precheck_content_length(request.headers, _max_bytes)
         content_arr = bytearray()
         while chunk := await file.read(1024 * 1024):
             content_arr.extend(chunk)
             if len(content_arr) > _max_bytes:
                 raise HTTPException(status_code=413, detail=f"File too large (max {settings.MAX_FILE_SIZE_MB}MB)")
-        content = bytes(content_arr)
-        text = await file_service.extract_text_from_bytes(file.filename or "resume.pdf", content)
+        raw_content = bytes(content_arr)
+        text, content = await file_service.extract_text_normalised_from_bytes(
+            file.filename or "resume.pdf",
+            raw_content,
+        )
     except HTTPException:
         # Preserve specific parser/file-service errors (e.g., encrypted storage blob uploads).
         raise
@@ -1720,7 +1883,7 @@ async def upload_pool_single(
 
     # FIX: check for duplicate on single pool upload for consistency with bulk
     file_hash = _sha256(content)
-    existing_hashes = await _existing_hashes(db, [file_hash])
+    existing_hashes = await _existing_hashes(db, [file_hash], owner_user_id=str(user.id))
     if file_hash in existing_hashes:
         raise HTTPException(
             status_code=409,
@@ -1737,7 +1900,7 @@ async def upload_pool_single(
     )
 
     if data.get("email"):
-        dup_emails = await _existing_pool_emails(db, [data["email"]])
+        dup_emails = await _existing_pool_emails(db, [data["email"]], owner_user_id=str(user.id))
         if data["email"].lower().strip() in dup_emails:
             raise HTTPException(
                 status_code=409,
@@ -1745,9 +1908,20 @@ async def upload_pool_single(
                 "Delete the existing entry before re-uploading."
             )
 
-    candidate = Candidate(**data, user_id=user.id)
-    db.add(candidate)
-    await db.flush()
+    candidate_values = {**data, "user_id": user.id}
+    try:
+        candidate = await _insert_pool_candidate_atomic(db, candidate_values)
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="A resume with the same email already exists in your pool.",
+        ) from exc
+    if candidate is None:
+        raise HTTPException(
+            status_code=409,
+            detail="A resume with the same email already exists in your pool.",
+        )
     await log_action(db, user.id, "UPLOAD_RESUME_POOL", "candidate", candidate.id)
     await db.commit()
     await db.refresh(candidate)
@@ -1767,6 +1941,7 @@ async def upload_bulk_resumes(
     user: User = Depends(require_hr),
 ):
     """Bulk resume upload for a specific job with deduplication."""
+    _bulk_started_at = time.perf_counter()
     max_bulk_files = max(1, int(settings.BULK_UPLOAD_MAX_FILES))
     if len(files) > max_bulk_files:
         raise HTTPException(status_code=422, detail=f"Max {max_bulk_files} files per bulk upload")
@@ -1790,6 +1965,10 @@ async def upload_bulk_resumes(
 
     _READ_BATCH = 50
     _file_pairs = list(zip(files, client_ids))
+    resume_from_batch = 0
+    if progress_run_id:
+        prior = _BULK_JOB_STATUS.get(progress_run_id, {})
+        resume_from_batch = int((prior or {}).get("last_committed_batch") or 0)
 
     already_uploaded: set[str] = set()
     existing_emails_for_job: set[str] = set()
@@ -1800,8 +1979,9 @@ async def upload_bulk_resumes(
     skipped_duplicates: list[dict] = []
     ai_failures: list[dict] = []
     success_records: list[dict] = []
+    last_committed_batch = 0
 
-    async def _publish_progress(status: str = "running") -> None:
+    async def _publish_progress(status: str = "running", *, last_committed_batch: int | None = None) -> None:
         if not progress_run_id:
             return
         processed = (
@@ -1814,6 +1994,11 @@ async def upload_bulk_resumes(
         _set_bulk_job_status(
             progress_run_id,
             status=status,
+            last_committed_batch=(
+                int(last_committed_batch)
+                if last_committed_batch is not None
+                else int((_BULK_JOB_STATUS.get(progress_run_id, {}) or {}).get("last_committed_batch") or 0)
+            ),
             progress={
                 "processed": processed,
                 "total": len(files),
@@ -1824,7 +2009,7 @@ async def upload_bulk_resumes(
         )
         await _persist_bulk_job_status(progress_run_id)
 
-    await _publish_progress("running")
+    await _publish_progress("running", last_committed_batch=last_committed_batch)
 
     bulk_fast_mode = bool(settings.BULK_FAST_MODE or _ai_degraded_mode_active())
     if bulk_fast_mode and not bool(settings.BULK_FAST_MODE):
@@ -1862,18 +2047,6 @@ async def upload_bulk_resumes(
     async def _score_one(fname: str, content: bytes, text: str, pre_parsed: dict) -> dict:
         async with _score_sem:
             h = _sha256(content)
-            if settings.BULK_USE_HARNESS_PIPELINE:
-                return await _compute_resume_data_via_harness(
-                    fname,
-                    content,
-                    text,
-                    job,
-                    tenant_id=str(user.id),
-                    auth_header=request.headers.get("authorization"),
-                    user_email=user.email,
-                    pre_parsed_data=pre_parsed,
-                    fast_mode=bulk_fast_mode,
-                )
             return await _compute_resume_data_from_bytes(
                 fname,
                 content,
@@ -1886,7 +2059,9 @@ async def upload_bulk_resumes(
                 fast_mode=bulk_fast_mode,
             )
 
-    for _bi in range(0, len(_file_pairs), _READ_BATCH):
+    for batch_no, _bi in enumerate(range(0, len(_file_pairs), _READ_BATCH), start=1):
+        if batch_no <= resume_from_batch:
+            continue
         _batch_pairs = _file_pairs[_bi: _bi + _READ_BATCH]
 
         #  Step 1: read bytes + validate extension 
@@ -1901,6 +2076,7 @@ async def upload_bulk_resumes(
                 continue
             try:
                 _max_bytes = int(settings.MAX_FILE_SIZE_BYTES)
+                _precheck_content_length(getattr(f, "headers", None), _max_bytes)
                 _chunk_size = 4 * 1024 * 1024
                 content_arr = bytearray()
                 oversized = False
@@ -2034,54 +2210,60 @@ async def upload_bulk_resumes(
             return_exceptions=True,
         )
 
-        #  Step 7: persist; drop all byte references before next batch 
-        candidates_to_add = []
+        # Step 7: persist with per-row savepoints so one bad row does not roll
+        # back all valid rows in the same batch.
         for (fname, _content, _text, cid), result in zip(_scoreable, _ai_results):
             if isinstance(result, Exception):
                 _log_worker_error("[ERROR] AI processing failed for %s: %s", fname, result)
                 ai_failures.append({"filename": fname, "file_id": cid, "error": str(result)})
                 continue
             try:
-                # Keep recruiter ownership on pool rows only; job rows must not
-                # participate in candidate self-apply uniqueness.
-                candidate = Candidate(**result, user_id=None)
-                db.add(candidate)
-                candidates_to_add.append((fname, cid, candidate))
-            except Exception as e:
-                logger.error("DB add failed for %s: %s", fname, e)
-                ai_failures.append({"filename": fname, "file_id": cid, "error": f"DB add failed: {e}"})
-
-        try:
-            # FIX Finding 13 & 34: Flush to get IDs, log actions, then commit the entire batch atomically
-            if candidates_to_add:
-                await db.flush()
-                for fname, cid, candidate in candidates_to_add:
+                async with db.begin_nested():
+                    candidate = Candidate(**result, user_id=None)
+                    db.add(candidate)
+                    await db.flush()
                     await log_action(db, user.id, "UPLOAD_RESUME", "candidate", candidate.id)
-                    success_records.append({
-                        "filename": fname, "file_id": cid, "candidate_id": candidate.id
-                    })
-                await db.commit()
-        except Exception as e:
-            await db.rollback()
-            logger.error("Batch DB save failed: %s", e)
-            for fname, cid, _ in candidates_to_add:
-                ai_failures.append({"filename": fname, "file_id": cid, "error": f"DB batch save failed: {e}"})
+                    success_records.append(
+                        {"filename": fname, "file_id": cid, "candidate_id": candidate.id}
+                    )
+            except IntegrityError as exc:
+                logger.warning("Skipping invalid/duplicate candidate row for %s: %s", fname, exc)
+                ai_failures.append(
+                    {"filename": fname, "file_id": cid, "error": "Duplicate or invalid candidate row."}
+                )
+            except Exception as exc:
+                logger.error("DB save failed for %s: %s", fname, exc)
+                ai_failures.append({"filename": fname, "file_id": cid, "error": f"DB save failed: {exc}"})
+
+        await db.commit()
+        last_committed_batch = batch_no
 
         del _scoreable, _scoreable_parsed, _ai_results  # release before next batch
-        await _publish_progress("running")
+        await _publish_progress("running", last_committed_batch=last_committed_batch)
 
     if success_records:
-        await _recompute_job_rank_and_tags(db, job)
+        await _recompute_job_rank_and_tags(
+            db,
+            job,
+            auth_header=request.headers.get("authorization"),
+        )
         await db.commit()
 
     all_failures = read_failures + extract_failures + ai_failures
-    await _publish_progress("completed")
+    await _publish_progress("completed", last_committed_batch=last_committed_batch)
     if all_failures or skipped_duplicates:
         # Mixed/failed bulk outcomes should not be reported as plain "201 Created".
         response.status_code = 207
+    elapsed_ms = (time.perf_counter() - _bulk_started_at) * 1000.0
+    if elapsed_ms > settings.RECRUITER_BULK_API_SLO_MS:
+        logger.warning(
+            "Bulk upload exceeded SLO: %.0fms > %dms",
+            elapsed_ms,
+            settings.RECRUITER_BULK_API_SLO_MS,
+        )
 
     return {
-        "orchestrator": "harness" if settings.BULK_USE_HARNESS_PIPELINE else "native",
+        "orchestrator": "native",
         "degraded_mode": bool(bulk_fast_mode),
         "success": success_records,
         "failed": all_failures,
@@ -2127,6 +2309,7 @@ async def upload_bulk_resumes_async(
             continue
         try:
             max_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
+            _precheck_content_length(getattr(f, "headers", None), max_bytes)
             content_arr = bytearray()
             while chunk := await f.read(1024 * 1024):
                 content_arr.extend(chunk)
@@ -2134,6 +2317,7 @@ async def upload_bulk_resumes_async(
                     raise ValueError(f"File exceeds {settings.MAX_FILE_SIZE_MB}MB limit")
             content = bytes(content_arr)
             content = _maybe_decrypt_bulk_upload_content(f.filename or "resume.pdf", ext, content)
+            file_service.validate_file_magic(content, ext)
             suffix = ext if ext else ".tmp"
             temp_path = ""
             try:
@@ -2161,6 +2345,7 @@ async def upload_bulk_resumes_async(
     user_id = str(user.id)
     user_email = str(user.email or "")
     user_role = user.role
+    temp_paths = [path for _fname, path, _cid in accepted]
 
     _set_bulk_job_status(
         run_id,
@@ -2185,6 +2370,8 @@ async def upload_bulk_resumes_async(
             "failed_count": len(intake_rejected),
             "duplicate_count": 0,
         },
+        last_committed_batch=0,
+        temp_paths=temp_paths,
     )
     await _persist_bulk_job_status(run_id)
 
@@ -2260,6 +2447,7 @@ async def upload_bulk_resumes_async(
                 run_id,
                 status="completed",
                 completed_at=_now_iso(),
+                temp_paths=[],
                 result={
                     "http_status": resp.status_code,
                     "summary": result,
@@ -2273,13 +2461,31 @@ async def upload_bulk_resumes_async(
                 status="failed",
                 completed_at=_now_iso(),
                 error=str(exc),
+                temp_paths=[],
             )
             await _persist_bulk_job_status(run_id)
         finally:
             for temp_upload in temp_uploads:
                 temp_upload.close()
+            for temp_path in temp_paths:
+                try:
+                    os.unlink(temp_path)
+                except FileNotFoundError:
+                    continue
+                except Exception as exc:
+                    logger.warning("Failed to cleanup temp bulk file %s: %s", temp_path, exc)
 
-    task = asyncio.create_task(_runner())
+    try:
+        task = asyncio.create_task(_runner())
+    except Exception:
+        for temp_path in temp_paths:
+            try:
+                os.unlink(temp_path)
+            except FileNotFoundError:
+                continue
+            except Exception:
+                pass
+        raise
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 
@@ -2287,7 +2493,7 @@ async def upload_bulk_resumes_async(
         "run_id": run_id,
         "job_id": job_id,
         "status": "started",
-        "orchestrator": "harness" if settings.BULK_USE_HARNESS_PIPELINE else "native",
+        "orchestrator": "native",
         "max_concurrent_jobs": max(1, int(settings.BULK_ASYNC_MAX_CONCURRENT_JOBS)),
         "accepted_count": len(accepted),
         "rejected_count": len(intake_rejected),
@@ -2409,6 +2615,7 @@ async def upload_bulk_pool(
                 continue
             try:
                 _max_bytes = int(settings.MAX_FILE_SIZE_BYTES)
+                _precheck_content_length(getattr(f, "headers", None), _max_bytes)
                 _chunk_size = 4 * 1024 * 1024
                 content_arr = bytearray()
                 oversized = False
@@ -2426,6 +2633,7 @@ async def upload_bulk_pool(
                     continue
                 content = bytes(content_arr)
                 content = _maybe_decrypt_bulk_upload_content(f.filename or "resume.pdf", _raw_ext, content)
+                file_service.validate_file_magic(content, _raw_ext)
                 _batch_buf.append((f.filename or "resume.pdf", content, cid))
             except Exception as e:
                 if isinstance(e, HTTPException):
@@ -2441,7 +2649,7 @@ async def upload_bulk_pool(
         _batch_hashes = {cid: _sha256(content) for _, content, cid in _batch_buf}
         _new_hashes = [h for h in _batch_hashes.values() if h not in already_uploaded]
         if _new_hashes:
-            _existing = await _existing_hashes(db, _new_hashes)
+            _existing = await _existing_hashes(db, _new_hashes, owner_user_id=str(user.id))
             already_uploaded.update(_existing)
 
         _dedup_buf: list[tuple[str, bytes, str]] = []
@@ -2492,7 +2700,11 @@ async def upload_bulk_pool(
             r.get("email") for r in _parsed_results
             if not isinstance(r, Exception) and r.get("email")
         ]
-        _db_existing_emails = await _existing_pool_emails(db, _batch_emails)
+        _db_existing_emails = await _existing_pool_emails(
+            db,
+            _batch_emails,
+            owner_user_id=str(user.id),
+        )
 
         for (fname, content, text, cid), parsed in zip(_text_buf, _parsed_results):
             if isinstance(parsed, Exception):
@@ -2530,11 +2742,17 @@ async def upload_bulk_pool(
                 _log_worker_error("[ERROR] Pool AI failed for %s: %s", fname, result)
                 ai_failures.append({"filename": fname, "file_id": cid, "error": str(result)})
             else:
-                # Persist immediately  no post-loop dedup needed any more
-                candidate = Candidate(**result, user_id=user.id)
                 try:
-                    db.add(candidate)
-                    await db.flush()  # get DB-assigned ID before logging
+                    candidate = await _insert_pool_candidate_atomic(
+                        db,
+                        {**result, "user_id": user.id},
+                    )
+                    if candidate is None:
+                        skipped_duplicates.append(
+                            {"filename": fname, "file_id": cid, "reason": "duplicate_email"}
+                        )
+                        await db.rollback()
+                        continue
                     await log_action(db, user.id, "UPLOAD_RESUME_POOL", "candidate", candidate.id)
                     await db.commit()
                     success_records.append({"filename": fname, "file_id": cid,
@@ -2607,7 +2825,11 @@ async def get_pool_matches(
             jd_education_requirement=getattr(job, "education_requirement", None),
         )
         loc_pct = scoring_service.location_match_score(getattr(c, "location", None), job.location)
-        vec_sim = scoring_service.cosine_similarity(c.embedding or [], job.embedding or [])
+        try:
+            vec_sim = scoring_service.cosine_similarity(c.embedding or [], job.embedding or [])
+        except ValueError as vec_err:
+            logger.warning("Vector similarity degraded during pool import for candidate %s: %s", c.id, vec_err)
+            vec_sim = 0.0
 
         # FIX: Pool candidates have embedding=[]  vec_sim=0.0. The vector weight
         # still occupies the denominator, deflating pool scores by ~5% vs post-import.
@@ -2623,34 +2845,34 @@ async def get_pool_matches(
             exp_min=job.experience_min,
             exp_max=job.experience_max,
         )
-        score = scoring_service.compute_resume_score(
-            skill_pct,
-            exp_pct,
-            proj_pct,
-            edu_pct,
-            vec_sim,
-            loc_pct,
-            exp_years,
-            weights=phase_b_weights,
-            vector_available=has_embedding and bool(job.embedding or []),
+        missing_must_count = sum(
+            1
+            for skill in (job.must_have_skills or [])
+            if not scoring_service.semantic_skill_match(skill, c.normalized_skills or [])
         )
-        score = round(min(100.0, max(0.0, score + phase_b_bias)), 2)
-        if settings.PHASE_C_SCORING_ENABLED:
-            missing_must_count = sum(
-                1
-                for skill in (job.must_have_skills or [])
-                if not scoring_service.semantic_skill_match(skill, c.normalized_skills or [])
-            )
-            score = scoring_service.apply_phase_c_guardrails(
-                score=score,
-                has_jd_skills=_job_has_meaningful_criteria(job),
-                total_must_have_count=len(job.must_have_skills or []),
-                critical_missing_count=missing_must_count,
-                rule_skill_pct=skill_pct,
-                rule_proj_pct=proj_pct,
-                ai_confidence=None,
-                jd_signal_strength=phase_b_meta.get("jd_signal_strength"),
-            )
+        score, _, _, _ = scoring_service.compute_resume_score_with_ai_override(
+            ai_scores=None,
+            education_pct=edu_pct,
+            vector_sim=vec_sim,
+            location_pct=loc_pct,
+            experience_years=exp_years,
+            rule_skill_pct=skill_pct,
+            rule_exp_pct=exp_pct,
+            rule_proj_pct=proj_pct,
+            critical_missing_count=missing_must_count,
+            has_jd_skills=_job_has_meaningful_criteria(job),
+            total_must_have_count=len(job.must_have_skills or []),
+            vector_available=has_embedding and bool(job.embedding or []),
+            calibrated_weights=phase_b_weights,
+            score_bias_points=phase_b_bias,
+            phase_c_enabled=bool(settings.PHASE_C_SCORING_ENABLED),
+            ai_confidence=None,
+            jd_signal_strength=phase_b_meta.get("jd_signal_strength"),
+            required_skills=job.must_have_skills or [],
+            work_experience=c.work_experience or [],
+            skill_years=skill_years_c,
+        )
+        score = round(score, 2)
         tag = scoring_service.assign_tag(score)
 
         if score < min_score:
@@ -2802,14 +3024,14 @@ async def get_all_data(
     """
     from sqlalchemy import and_, or_
     if user.role == UserRole.admin:
-        query = select(Candidate)
+        query = select(Candidate).options(load_only(*_CANDIDATE_ALL_DATA_LOAD_ONLY))
     else:
         owned_job_ids = select(JobDescription.id).where(JobDescription.created_by == user.id)
         pool_owned_filter = and_(
             Candidate.job_id.is_(None),
             Candidate.user_id == user.id,
         )
-        query = select(Candidate).where(
+        query = select(Candidate).options(load_only(*_CANDIDATE_ALL_DATA_LOAD_ONLY)).where(
             or_(
                 Candidate.job_id.in_(owned_job_ids),
                 pool_owned_filter,
@@ -2837,7 +3059,7 @@ async def get_all_data(
     return (await db.execute(query)).scalars().all()
 
 
-@router.get("/", response_model=List[CandidateListOut])
+@router.get("/", response_model=List[CandidatePipelineListOut])
 async def list_candidates(
     job_id: Optional[str] = None,
     tag: Optional[str] = None,
@@ -2846,7 +3068,7 @@ async def list_candidates(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_hr),
 ):
-    query = select(Candidate)
+    query = select(Candidate).options(load_only(*_CANDIDATE_LIST_LOAD_ONLY))
     if user.role != UserRole.admin:
         from sqlalchemy import and_, or_
         owned_job_ids = select(JobDescription.id).where(JobDescription.created_by == user.id)
@@ -2861,7 +3083,10 @@ async def list_candidates(
             await _assert_job_owner(job_id, user, db)
         query = query.where(Candidate.job_id == job_id)
     if tag:
-        query = query.where(Candidate.tag == tag)
+        normalized_tag = CandidateTag._missing_(tag) if isinstance(tag, str) else tag
+        if normalized_tag is None:
+            raise HTTPException(status_code=422, detail="Invalid tag. Use Strong, Medium, or Reject.")
+        query = query.where(Candidate.tag == normalized_tag)
     # BUG-5 FIX: is_archived == False excludes rows where is_archived IS NULL
     # (all records created before add_is_archived_migration.py ran). Those candidates
     # silently disappear from the pipeline view. Include NULL rows explicitly.
@@ -2884,13 +3109,28 @@ async def run_shortlisting(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_hr),
 ):
-    await _assert_job_owner(job_id, user, db)
-    candidates = (await db.execute(select(Candidate).where(Candidate.job_id == job_id, Candidate.is_archived == False))).scalars().all()
-    for c in candidates:
-        c.tag = scoring_service.assign_tag(c.resume_score, strong_threshold, medium_threshold)
-    await log_action(db, user.id, "RUN_SHORTLISTING", "job_description", job_id)
-    await db.commit()
-    return {"message": f"Shortlisting complete for {len(candidates)} candidates"}
+    job = await _assert_job_owner(job_id, user, db)
+    lock = _SHORTLIST_LOCKS.setdefault(job_id, asyncio.Lock())
+    if lock.locked():
+        return {"message": "Ranking already in progress for this job. Please wait."}
+
+    async with lock:
+        candidates = (await db.execute(
+            select(Candidate).where(
+                Candidate.job_id == job_id,
+                Candidate.is_archived == False,
+            )
+        )).scalars().all()
+        await _recompute_job_rank_and_tags(
+            db,
+            job,
+            strong_threshold=strong_threshold,
+            medium_threshold=medium_threshold,
+            auth_header=request.headers.get("authorization"),
+        )
+        await log_action(db, user.id, "RUN_SHORTLISTING", "job_description", job_id)
+        await db.commit()
+        return {"message": f"Shortlisting complete for {len(candidates)} candidates"}
 
 
 class BulkArchiveRequest(BaseModel):
@@ -3221,7 +3461,11 @@ async def refresh_job_jd_similarity(
                 continue
 
             c.embedding = resume_embedding
-            c.vector_similarity = scoring_service.cosine_similarity(resume_embedding, job.embedding or [])
+            try:
+                c.vector_similarity = scoring_service.cosine_similarity(resume_embedding, job.embedding or [])
+            except ValueError as vec_err:
+                logger.warning("Vector similarity degraded during recompute for candidate %s: %s", c.id, vec_err)
+                c.vector_similarity = 0.0
 
             breakdown = dict(c.score_breakdown or {})
             breakdown["jd_similarity_refreshed_at"] = _now_iso()
@@ -3279,6 +3523,7 @@ async def get_candidate(
 
 @router.patch("/{candidate_id}", response_model=CandidateOut)
 async def update_candidate(
+    request: Request,
     candidate_id: str,
     body: CandidateUpdate,
     db: AsyncSession = Depends(get_db),
@@ -3298,7 +3543,11 @@ async def update_candidate(
     if c.job_id:
         job = await db.get(JobDescription, c.job_id)
         if job is not None:
-            await _recompute_job_rank_and_tags(db, job)
+            await _recompute_job_rank_and_tags(
+                db,
+                job,
+                auth_header=request.headers.get("authorization"),
+            )
 
     new_tag = c.tag
     if new_tag and new_tag != old_tag:
@@ -3390,6 +3639,7 @@ async def download_resume(
 
 @router.post("/{candidate_id}/draft-email")
 async def draft_candidate_email(
+    request: Request,
     candidate_id: str,
     body: EmailDraftRequest,
     db: AsyncSession = Depends(get_db),
@@ -3401,12 +3651,13 @@ async def draft_candidate_email(
     candidate_name = c.name or "Candidate"
     job_title = jd.title if jd else "Software Engineer"
     try:
-        email_data = await gemini_service.generate_hr_email(
+        email_data = await _run_hr_email_draft_with_fallback(
             email_type=email_type,
             candidate_name=candidate_name,
             job_title=job_title,
-            resume_score=c.resume_score,
+            resume_score=float(c.resume_score or 0.0),
             quiz_score=c.quiz_score or 0.0,
+            auth_header=request.headers.get("authorization"),
         )
         return email_data
     except Exception:

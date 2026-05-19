@@ -187,6 +187,36 @@ export default function Jobs() {
     setIsGenerating(true);
     toast.info("Generating job description with AI...");
 
+    const localFallback = {
+      role: newJob.title,
+      description: `We are hiring a ${newJob.title} with ${Number(newJob.experience_min)}-${Number(newJob.experience_max)} years of experience in ${newJob.location || "Remote"}. Responsibilities include designing and delivering reliable features, collaborating with cross-functional teams, writing maintainable code, and improving system quality, performance, and observability.`,
+      must_have_skills: [] as string[],
+      good_to_have_skills: [] as string[],
+    };
+
+    const applyGeneratedState = (generated: any) => {
+      const generatedDescription = (generated?.description || "").trim();
+      const generatedMustHave = Array.isArray(generated?.must_have_skills) ? generated.must_have_skills : [];
+      const generatedGoodToHave = Array.isArray(generated?.good_to_have_skills) ? generated.good_to_have_skills : [];
+      const hasContent =
+        !!generatedDescription || generatedMustHave.length > 0 || generatedGoodToHave.length > 0;
+
+      const finalPayload = hasContent ? generated : localFallback;
+      const finalDescription = (finalPayload?.description || "").trim();
+      const finalMustHave = Array.isArray(finalPayload?.must_have_skills) ? finalPayload.must_have_skills : [];
+      const finalGoodToHave = Array.isArray(finalPayload?.good_to_have_skills) ? finalPayload.good_to_have_skills : [];
+
+      setNewJob(prev => ({
+        ...prev,
+        description: finalDescription,
+        must_have_skills: finalMustHave.join(', ') || "",
+        good_to_have_skills: finalGoodToHave.join(', ') || "",
+        role: finalPayload?.role || prev.title
+      }));
+
+      return hasContent;
+    };
+
     try {
       const generated = await generateJob({
         role: newJob.title,
@@ -194,18 +224,19 @@ export default function Jobs() {
         experience_min: Number(newJob.experience_min),
         experience_max: Number(newJob.experience_max)
       });
-
-      setNewJob({
-        ...newJob,
-        description: generated.description || "",
-        must_have_skills: generated.must_have_skills?.join(', ') || "",
-        good_to_have_skills: generated.good_to_have_skills?.join(', ') || "",
-        role: generated.role || newJob.title
-      });
-      
-      toast.success("Job description generated!");
-    } catch (error) {
-      toast.error("Failed to generate job description");
+      const usedAi = applyGeneratedState(generated);
+      if (usedAi) {
+        toast.success("Job description generated!");
+      } else {
+        toast.warning("AI returned empty output. Added a fallback JD template.");
+      }
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.detail ||
+        error?.message ||
+        "Failed to generate job description";
+      applyGeneratedState(localFallback);
+      toast.warning(`AI unavailable: ${message}. Added a fallback JD template.`);
     } finally {
       setIsGenerating(false);
     }

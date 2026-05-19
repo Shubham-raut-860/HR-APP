@@ -7,7 +7,18 @@ export const getSummary = async (jobId: string, signal?: AbortSignal) => {
 };
 
 export const getUntaggedMetrics = async (signal?: AbortSignal) => {
-  const response = await api.get('/analytics/metrics/untagged', { signal });
+  // Keep sidebar polling fast-fail so transient backend slowness
+  // doesn't leave hanging 120s requests that overlap each minute.
+  const response = await api.get('/analytics/metrics/untagged', {
+    signal,
+    // Do not enter global refresh-token retry flow for this background poll.
+    // If auth has expired, the main app flow will handle it; the sidebar poll
+    // must never block the UI for refresh timeout windows.
+    headers: {
+      'X-Skip-Auth-Refresh': '1',
+    },
+    timeout: 8_000,
+  });
   return response.data;
 };
 

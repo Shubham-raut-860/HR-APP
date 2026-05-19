@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+from app.agents.specialized import ResumeParserAgent, ScoringAgent
 from app.agents.state import (
     CandidateToolsState,
     JDGenerationState,
@@ -37,18 +38,47 @@ async def extract_resume_text(state: ResumeScreeningState) -> ResumeScreeningSta
 
 
 async def compute_resume_data(state: ResumeScreeningState) -> ResumeScreeningState:
-    # Reuse the existing router helper to preserve the current scoring behavior
-    # exactly while exposing it as an agent node.
-    from app.routers.resumes import _compute_resume_data_from_bytes
+    job_obj = state.get("job")
+    parsed_job = {
+        "id": getattr(job_obj, "id", "agent_jd"),
+        "title": getattr(job_obj, "title", None) or getattr(job_obj, "role", None) or "Role",
+        "role": getattr(job_obj, "role", None) or getattr(job_obj, "title", None) or "Role",
+        "experience_min": int(getattr(job_obj, "experience_min", 0) or 0),
+        "experience_max": int(getattr(job_obj, "experience_max", 5) or 5),
+        "must_have_skills": list(getattr(job_obj, "must_have_skills", None) or []),
+        "good_to_have_skills": list(getattr(job_obj, "good_to_have_skills", None) or []),
+        "description": getattr(job_obj, "description", "") or "",
+        "education_requirement": getattr(job_obj, "education_requirement", None),
+        "location": getattr(job_obj, "location", None),
+    }
+    parser = ResumeParserAgent()
+    scorer = ScoringAgent()
+    parsed_payload = await parser({"text": state["text"]})
+    parsed_resume = parsed_payload.get("parsed_resume") if isinstance(parsed_payload, dict) else {}
+    if not isinstance(parsed_resume, dict):
+        parsed_resume = {}
 
-    resume_data = await _compute_resume_data_from_bytes(
-        state["filename"],
-        state["content"],
-        state["text"],
-        state["job"],
-        cached_candidate=state.get("cached_candidate"),
-        user_email=state.get("user_email"),
+    score_payload = await scorer(
+        {
+            "parsed_resume": parsed_resume,
+            "parsed_job": parsed_job,
+        }
     )
+    score_result = score_payload.get("score_result") if isinstance(score_payload, dict) else {}
+    if not isinstance(score_result, dict):
+        score_result = {}
+
+    resume_data = {
+        **parsed_resume,
+        **score_result,
+        "score_breakdown": {
+            "matched_must_have": score_result.get("matched_must_have", []),
+            "missing_must_have": score_result.get("missing_must_have", []),
+            "matched_good_to_have": score_result.get("matched_good_to_have", []),
+            "reasoning": score_result.get("reasoning", ""),
+            "ai_score_used": bool(score_result.get("ai_score_used", False)),
+        },
+    }
     return {"resume_data": resume_data}
 
 
@@ -64,9 +94,10 @@ async def document_intake_agent(state: ResumeAgentState) -> ResumeAgentState:
 async def resume_parser_agent(state: ResumeAgentState) -> ResumeAgentState:
     resume_model = _resolve_model(state, "resume_parser_agent")
     jd_model = _resolve_model(state, "jd_parser_agent")
+    jd_text = state.get("job_description") or ""
     parsed_resume, parsed_job = await asyncio.gather(
         gemini_service.parse_resume(state["resume_text"], model=resume_model),
-        gemini_service.parse_jd_from_document(state["job_description"], model=jd_model),
+        gemini_service.parse_jd_from_document(jd_text, model=jd_model),
     )
     result: ResumeAgentState = {"parsed_resume": parsed_resume, "parsed_job": parsed_job}
     if "parsed_resume" not in result or result["parsed_resume"] is None:
@@ -77,8 +108,6 @@ async def resume_parser_agent(state: ResumeAgentState) -> ResumeAgentState:
 
 
 async def scoring_agent(state: ResumeAgentState) -> ResumeAgentState:
-    from app.routers.resumes import _compute_resume_data_from_bytes
-
     def safe_int(value, default: int = 0) -> int:
         try:
             return int(value)
@@ -99,6 +128,7 @@ async def scoring_agent(state: ResumeAgentState) -> ResumeAgentState:
     job = SimpleNamespace(
         id=parsed_job.get("id") or "agent_jd",
         title=parsed_job.get("title") or parsed_job.get("role") or "Generated JD",
+        role=parsed_job.get("role") or parsed_job.get("title") or "Generated JD",
         experience_min=safe_int(parsed_job.get("experience_min"), 0),
         experience_max=safe_int(parsed_job.get("experience_max"), 5),
         must_have_skills=ensure_list(parsed_job.get("must_have_skills")),
@@ -109,13 +139,30 @@ async def scoring_agent(state: ResumeAgentState) -> ResumeAgentState:
         embedding=[],
     )
 
-    score_result = await _compute_resume_data_from_bytes(
-        filename,
-        state["file_bytes"],
-        state.get("resume_text") or "",
-        job,
-        pre_parsed_data=state.get("parsed_resume"),
+    scorer = ScoringAgent()
+    score_payload = await scorer(
+        {
+            "filename": filename,
+            "file_bytes": state.get("file_bytes"),
+            "resume_text": state.get("resume_text") or "",
+            "parsed_resume": state.get("parsed_resume") or {},
+            "parsed_job": {
+                "id": job.id,
+                "title": job.title,
+                "role": job.role,
+                "experience_min": job.experience_min,
+                "experience_max": job.experience_max,
+                "must_have_skills": job.must_have_skills,
+                "good_to_have_skills": job.good_to_have_skills,
+                "description": job.description,
+                "education_requirement": job.education_requirement,
+                "location": job.location,
+                "embedding": job.embedding,
+            },
+            "skip_ai_scoring": bool(state.get("skip_ai_scoring", False)),
+        }
     )
+    score_result = score_payload.get("score_result") if isinstance(score_payload, dict) else None
     result: ResumeAgentState = {"score_result": score_result}
     if "score_result" not in result or result["score_result"] is None:
         raise ValueError("scoring_agent missing required key: score_result")

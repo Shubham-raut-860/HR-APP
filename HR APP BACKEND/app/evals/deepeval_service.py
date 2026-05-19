@@ -380,10 +380,10 @@ class DeepEvalService:
         self._available = self._judge is not None
         self._initialized = True
         if self._available:
-            logger.info("✅ DeepEval service initialised with Azure OpenAI judge (%s).",
+            logger.info("DeepEval service initialised with Azure OpenAI judge (%s).",
                         self._judge.get_model_name())
         else:
-            logger.warning("⚠️  DeepEval service running in no-op mode (missing dependencies/config).")
+            logger.warning("DeepEval service running in no-op mode (missing dependencies/config).")
 
     # ── internal helpers ──────────────────────────────────────────────────────
 

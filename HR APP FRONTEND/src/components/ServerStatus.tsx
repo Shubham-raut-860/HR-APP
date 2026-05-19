@@ -14,7 +14,11 @@ export function ServerStatus() {
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        await api.get('/health');
+        await api.get('/health', {
+          // Health polling must fail fast and never trigger auth refresh loops.
+          timeout: 8_000,
+          headers: { 'X-Skip-Auth-Refresh': '1' },
+        });
         if (prevOnline.current === false) {
           toast.success("Backend connection restored");
         }
