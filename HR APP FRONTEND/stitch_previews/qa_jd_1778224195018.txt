@@ -1,0 +1,8 @@
+QA E2E Backend Engineer 1778224195018
+Location: Remote
+Experience: 3-6 years
+Must Have Skills: Python, FastAPI, SQL, PostgreSQL, REST API, Docker
+Good To Have Skills: AWS, Redis, Kubernetes, CI/CD
+Responsibilities:
+- Build scalable backend APIs for hiring workflows
+- Optimize database queries and schema design

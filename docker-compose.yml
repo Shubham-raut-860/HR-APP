@@ -1,0 +1,63 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build: "./HR APP BACKEND"
+    env_file:
+      - path: "./HR APP BACKEND/.env"
+        required: false
+    environment:
+      APP_ENV: development
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - "./HR APP BACKEND:/app"
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+      ]
+
+  harness-worker:
+    build: "./HR APP BACKEND"
+    env_file:
+      - path: "./HR APP BACKEND/.env"
+        required: false
+    environment:
+      APP_ENV: development
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - "./HR APP BACKEND:/app"
+    command: ["python", "-m", "app.services.harness_queue_worker"]
+
+  frontend:
+    build: "./HR APP FRONTEND"
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  redis_data:

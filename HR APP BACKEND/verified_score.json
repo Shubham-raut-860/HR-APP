@@ -1,0 +1,48 @@
+{
+  "ID": "6ed2621b-e494-4d85-90cf-418599df701c",
+  "Name": "Shubham Raut",
+  "Email": "[email-redacted]",
+  "JobID": "f8cc1a2a-128c-4363-92d6-46f49282859c",
+  "Score": 49.0,
+  "Breakdown": {
+    "ai_score_used": true,
+    "ai_skill_score": 60,
+    "ai_experience_score": 25,
+    "ai_project_score": 55,
+    "matched_must_have": [
+      "Python",
+      "SQL"
+    ],
+    "missing_must_have": [
+      "FastAPI"
+    ],
+    "matched_good_to_have": [],
+    "missing_good_to_have": [
+      "Docker",
+      "AWS"
+    ],
+    "reasoning": "The candidate explicitly demonstrates strong Python and SQL skills through internships, projects, and per-skill experience. However, there is no evidence of FastAPI or any backend web framework usage, which is a core must-have for the role. Total professional experience is only 0.75 years, well below the 2\u20135 years required. Projects are data science and ML-focused rather than Python backend or API development.",
+    "domain_fit": "adjacent",
+    "seniority_match": "underqualified",
+    "hire_recommendation": "no_hire",
+    "red_flags": [
+      "Missing FastAPI or any backend API framework experience",
+      "Total experience significantly below required range"
+    ],
+    "standout_factors": [
+      "Strong Python foundation with extensive ML and data projects",
+      "Hands-on experience with SQL databases and GCP services"
+    ],
+    "confidence": "high",
+    "rule_based": {
+      "skill_pct": 46.7,
+      "exp_pct": 92.5,
+      "proj_pct": 47.8
+    },
+    "candidate_tier": "fresher",
+    "from_cache": false,
+    "ocr_truncated": false,
+    "jd_hash": "a0f462d8ad33"
+  },
+  "Created": "2026-04-01 19:50:29.857886"
+}

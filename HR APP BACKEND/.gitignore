@@ -1,0 +1,17 @@
+uploads/
+*.db
+*.sqlite
+.venv/
+.env
+__pycache__/
+*.pyc
+dist/
+.pytest_cache/
+logs/
+# QA artifacts
+phase*.json
+*_report*.json
+*.bak
+audit_artifacts/
+scratch/
+tmp_*.log

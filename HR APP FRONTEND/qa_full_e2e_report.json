@@ -1,0 +1,95 @@
+{
+  "timestamp": "2026-05-22T19:03:46.910Z",
+  "recruiter": {
+    "first": "QA",
+    "last": "Recruiter1779476626910",
+    "email": "[email-redacted]",
+    "password": "Qa!Pass2026A"
+  },
+  "candidate": {
+    "first": "QA",
+    "last": "Candidate1779476626910",
+    "email": "[email-redacted]",
+    "password": "Qa!Pass2026A"
+  },
+  "job": {
+    "title": "QA E2E Backend Engineer",
+    "id": "9fd6babf-7aba-4f2d-84e4-960afa83c57a"
+  },
+  "recruiterFlow": {
+    "signupOk": true,
+    "jdUploadOk": true,
+    "jobOpenOk": true,
+    "bulkUploadTriggered": true,
+    "shortlistRan": true,
+    "quizGenerateAttempted": true,
+    "quizGenerated": true,
+    "candidatesAfterUpload": 12,
+    "scoreStats": {
+      "count": 12,
+      "min": 13.63,
+      "max": 86.69,
+      "avg": 56.43,
+      "std": 27.71
+    },
+    "tagCounts": {
+      "Strong": 6,
+      "Medium": 1,
+      "Reject": 5,
+      "Unknown": 0
+    },
+    "topCandidates": [
+      {
+        "name": "Aarav Sharma",
+        "score": 86.69,
+        "tag": "Strong",
+        "skills": []
+      },
+      {
+        "name": "Ananya Rao",
+        "score": 81.74,
+        "tag": "Strong",
+        "skills": []
+      },
+      {
+        "name": "Rohan Iyer",
+        "score": 81.03,
+        "tag": "Strong",
+        "skills": []
+      },
+      {
+        "name": "Priya Desai",
+        "score": 79.52,
+        "tag": "Strong",
+        "skills": []
+      },
+      {
+        "name": "Aditya Roy",
+        "score": 78.56,
+        "tag": "Strong",
+        "skills": []
+      }
+    ],
+    "diagnostics": {
+      "consoleErrors": [],
+      "pageErrors": [],
+      "apiErrors": []
+    }
+  },
+  "candidateFlow": {
+    "signupOk": true,
+    "vaultUploadCount": 5,
+    "vaultFullReached": true,
+    "appliedToJob": true,
+    "mockTestStarted": true,
+    "mockTestSubmitted": true,
+    "mockScoreText": "100%",
+    "diagnostics": {
+      "consoleErrors": [],
+      "pageErrors": [],
+      "apiErrors": []
+    }
+  },
+  "findings": [],
+  "verdict": "PASS_WITH_RESERVATIONS"
+}

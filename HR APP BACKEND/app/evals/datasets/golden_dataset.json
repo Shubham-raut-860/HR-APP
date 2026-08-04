@@ -1,0 +1,133 @@
+{
+  "resume_parsing": [
+    {
+      "id": "rp-001",
+      "description": "Senior Python Engineer — well-structured resume",
+      "resume_text": "John Smith\[email-redacted] | +1-415-555-0123 | San Francisco, CA\n\nSUMMARY\nSenior Software Engineer with 8 years of experience building scalable Python backends.\n\nEXPERIENCE\nSenior Engineer — Stripe (2019–2024)\n  - Built payment processing microservices using FastAPI and PostgreSQL\n  - Led a team of 5 engineers; reduced API latency by 40%\n\nSoftware Engineer — Uber (2016–2019)\n  - Developed real-time dispatch system in Python + Redis\n\nEDUCATION\nB.S. Computer Science — UC Berkeley, 2016\n\nSKILLS\nPython, FastAPI, PostgreSQL, Redis, Docker, Kubernetes, AWS, gRPC",
+      "expected_parsed": {
+        "name": "John Smith",
+        "email": "[email-redacted]",
+        "phone": "+1-415-555-0123",
+        "location": "San Francisco, CA",
+        "skills": ["Python", "FastAPI", "PostgreSQL", "Redis", "Docker", "Kubernetes", "AWS", "gRPC"],
+        "total_experience_years": 8,
+        "education": "B.S. Computer Science, UC Berkeley"
+      }
+    },
+    {
+      "id": "rp-002",
+      "description": "Junior Data Analyst — sparse resume",
+      "resume_text": "Priya Patel\[email-redacted]\nPune, Maharashtra\n\nSKILLS: Python, SQL, Excel, Power BI\n\nEXPERIENCE\nData Analyst Intern — Infosys (6 months, 2023)\n  - Created dashboards in Power BI\n  - Wrote SQL queries for reporting\n\nEDUCATION\nBCA — Pune University, 2023",
+      "expected_parsed": {
+        "name": "Priya Patel",
+        "email": "[email-redacted]",
+        "location": "Pune, Maharashtra",
+        "skills": ["Python", "SQL", "Excel", "Power BI"],
+        "total_experience_years": 0.5,
+        "education": "BCA, Pune University"
+      }
+    },
+    {
+      "id": "rp-003",
+      "description": "Mid-level .NET Backend Developer — Indian real-world pattern",
+      "resume_text": "Rohit Pawar\[email-redacted] | +91-98765-43210 | Pune, Maharashtra\n\nEXPERIENCE\nSoftware Developer — TCS (2021–2024, 3 years)\n  - Developed REST APIs using ASP.NET Core Web API and C#\n  - Worked with SQL Server, Entity Framework Core, and LINQ\n  - Implemented authentication with JWT and OAuth 2.0\n  - Used Git for version control and JIRA for task management\n\nEDUCATION\nB.E. Computer Engineering — Savitribai Phule Pune University, 2021\n\nSKILLS\nC#, ASP.NET Core, Web API, SQL Server, Entity Framework, LINQ, Git, JWT, JIRA",
+      "expected_parsed": {
+        "name": "Rohit Pawar",
+        "email": "[email-redacted]",
+        "location": "Pune, Maharashtra",
+        "skills": ["C#", "ASP.NET Core", "Web API", "SQL Server", "Entity Framework", "LINQ", "Git", "JWT"],
+        "total_experience_years": 3,
+        "education": "B.E. Computer Engineering, Savitribai Phule Pune University"
+      }
+    },
+    {
+      "id": "rp-004",
+      "description": "Career changer — no formal header, cluttered format",
+      "resume_text": "Kamlesh Kumar\nEmail: [email-redacted]\nObjective: Seeking a .NET Developer role.\n\nWork History:\n- 2 years as Manual QA Tester at Wipro (automated test scripts in Selenium)\n- 1 year self-learning C# and building CRUD applications in ASP.NET MVC\n\nEducation: B.Sc. IT, Mumbai University 2019\nSkills: Manual Testing, Selenium, C# (beginner), HTML, SQL",
+      "expected_parsed": {
+        "name": "Kamlesh Kumar",
+        "email": "[email-redacted]",
+        "skills": ["Manual Testing", "Selenium", "C#", "HTML", "SQL"],
+        "total_experience_years": 3,
+        "education": "B.Sc. IT, Mumbai University"
+      }
+    },
+    {
+      "id": "rp-005",
+      "description": "Senior .NET dev with multiple companies — parsing must handle overlapping dates",
+      "resume_text": "Shrikant Gaikwad\[email-redacted] | Nashik, Maharashtra\n\nEXPERIENCE\nLead Developer — Infosys (2018–2024, 6 years)\n  - Architected microservices using .NET 6, RabbitMQ, Redis\n  - Mentored 8 junior developers\n  - Implemented CI/CD pipelines using Azure DevOps\n\nSoftware Engineer — Cognizant (2015–2018, 3 years)\n  - Built WCF services and Windows Forms apps\n\nEDUCATION\nM.Tech Computer Science — VJTI Mumbai, 2015\n\nSKILLS\n.NET 6, C#, ASP.NET Core, Microservices, RabbitMQ, Redis, Azure DevOps, Docker, SQL Server",
+      "expected_parsed": {
+        "name": "Shrikant Gaikwad",
+        "email": "[email-redacted]",
+        "location": "Nashik, Maharashtra",
+        "skills": [".NET 6", "C#", "ASP.NET Core", "Microservices", "RabbitMQ", "Redis", "Azure DevOps", "Docker", "SQL Server"],
+        "total_experience_years": 9,
+        "education": "M.Tech Computer Science, VJTI Mumbai"
+      }
+    }
+  ],
+  "resume_scoring": [
+    {
+      "id": "rs-001",
+      "description": "Strong match — Python engineer vs Python JD",
+      "resume_text": "8 years Python, FastAPI, PostgreSQL, Docker, Kubernetes, AWS. Led team of 5. Reduced latency 40%.",
+      "jd_text": "We are looking for a Senior Python Engineer with 5+ years of experience in FastAPI or Django, cloud platforms (AWS/GCP), and container orchestration (Docker/Kubernetes). Experience leading engineering teams is a plus.",
+      "expected_scores": {"skill_score": 85, "experience_score": 90, "project_score": 75},
+      "score_direction": "high"
+    },
+    {
+      "id": "rs-002",
+      "description": "Weak match — frontend dev vs backend JD",
+      "resume_text": "3 years React, TypeScript, CSS, HTML, Redux. Built e-commerce UIs. No backend or cloud experience.",
+      "jd_text": "Senior Backend Engineer needed. Must have Python, FastAPI, PostgreSQL, AWS, Kubernetes. 5+ years backend only.",
+      "expected_scores": {"skill_score": 15, "experience_score": 20, "project_score": 10},
+      "score_direction": "low"
+    },
+    {
+      "id": "rs-003",
+      "description": "Adjacent domain — Java developer applying for .NET Core role",
+      "resume_text": "5 years Java Spring Boot, Hibernate, MySQL, REST APIs, Maven. Limited C# exposure. No Azure experience.",
+      "jd_text": "Backend .NET Core Developer. Must have C#, ASP.NET Core Web API, SQL Server, Entity Framework. Azure a bonus. 3-5 years.",
+      "expected_scores": {"skill_score": 35, "experience_score": 70, "project_score": 40},
+      "score_direction": "medium",
+      "note": "Experience matches but tech stack is adjacent, not exact"
+    },
+    {
+      "id": "rs-004",
+      "description": "Strong .NET match — senior dev vs .NET JD",
+      "resume_text": "6 years C#, ASP.NET Core, Web API, SQL Server, EF Core, JWT auth, Docker, Azure DevOps. Led small team.",
+      "jd_text": "Backend .NET Core Developer. Must have C#, ASP.NET Core Web API, SQL Server, Entity Framework. Azure a bonus. 3-5 years.",
+      "expected_scores": {"skill_score": 90, "experience_score": 85, "project_score": 75},
+      "score_direction": "high"
+    },
+    {
+      "id": "rs-005",
+      "description": "Overqualified — 12-year architect applying for junior .NET role",
+      "resume_text": "12 years .NET, Azure, Microservices, Solution Architecture, C#, ASP.NET. Previously Principal Architect at HCL.",
+      "jd_text": "Junior .NET Developer. 0-2 years experience. Must know C# basics and SQL. College grads welcome.",
+      "expected_scores": {"skill_score": 90, "experience_score": 40, "project_score": 70},
+      "score_direction": "mixed",
+      "note": "Skills match but seniority_match=overqualified_major should trigger"
+    }
+  ],
+  "jd_generation": [
+    {
+      "id": "jg-001",
+      "description": "Full-stack JD from a brief prompt",
+      "user_input": "Create a job description for a Senior Full-Stack Engineer at a fintech startup. They need React + Node.js experience, 5+ years, knowledge of financial systems a plus.",
+      "expected_sections": ["title", "overview", "responsibilities", "required skills", "preferred qualifications"]
+    },
+    {
+      "id": "jg-002",
+      "description": "Data Engineer JD from role brief",
+      "user_input": "Write a JD for a Data Engineer. Must know Apache Spark, dbt, Snowflake. 3+ years. Remote position.",
+      "expected_sections": ["title", "overview", "responsibilities", "required skills"]
+    },
+    {
+      "id": "jg-003",
+      "description": ".NET Core Developer JD — matches real_data/JD portfolio",
+      "user_input": "Write a job description for a Backend .NET Core Developer. 3-5 years experience. Must have C#, ASP.NET Core, Web API, SQL Server, Entity Framework. Nice to have: Azure, Docker, Redis.",
+      "expected_sections": ["title", "overview", "responsibilities", "required skills", "preferred qualifications"]
+    }
+  ]
+}

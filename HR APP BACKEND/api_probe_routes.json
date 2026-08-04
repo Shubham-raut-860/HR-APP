@@ -1,0 +1,592 @@
+{
+  "summary": {
+    "total": 83,
+    "2xx": 1,
+    "4xx": 82,
+    "5xx": 0,
+    "exceptions": 0
+  },
+  "results": [
+    {
+      "method": "POST",
+      "path": "/auth/register",
+      "url": "/auth/register",
+      "status": 422,
+      "body": "{\"detail\": [{\"type\": \"missing\", \"loc\": [\"body\", \"email\"], \"msg\": \"Field required\", \"input\": {}}, {\"type\": \"missing\", \"loc\": [\"body\", \"password\"], \"msg\": \"Field required\", \"input\": "
+    },
+    {
+      "method": "POST",
+      "path": "/auth/login",
+      "url": "/auth/login",
+      "status": 422,
+      "body": "{\"detail\": [{\"type\": \"missing\", \"loc\": [\"body\", \"email\"], \"msg\": \"Field required\", \"input\": {}}, {\"type\": \"missing\", \"loc\": [\"body\", \"password\"], \"msg\": \"Field required\", \"input\": "
+    },
+    {
+      "method": "POST",
+      "path": "/auth/forgot-password",
+      "url": "/auth/forgot-password",
+      "status": 422,
+      "body": "{\"detail\": [{\"type\": \"missing\", \"loc\": [\"body\", \"email\"], \"msg\": \"Field required\", \"input\": {}}], \"message\": \"Validation error\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/reset-password",
+      "url": "/auth/reset-password",
+      "status": 422,
+      "body": "{\"detail\": [{\"type\": \"missing\", \"loc\": [\"body\", \"token\"], \"msg\": \"Field required\", \"input\": {}}, {\"type\": \"missing\", \"loc\": [\"body\", \"new_password\"], \"msg\": \"Field required\", \"inpu"
+    },
+    {
+      "method": "GET",
+      "path": "/auth/me",
+      "url": "/auth/me",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "PUT",
+      "path": "/auth/me",
+      "url": "/auth/me",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/change-password",
+      "url": "/auth/change-password",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/jd/from-document",
+      "url": "/jd/from-document",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/jd/bulk-from-documents",
+      "url": "/jd/bulk-from-documents",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/jd/",
+      "url": "/jd/",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/jd/generate",
+      "url": "/jd/generate",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/jd/",
+      "url": "/jd/",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/jd/{jd_id}",
+      "url": "/jd/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "PUT",
+      "path": "/jd/{jd_id}",
+      "url": "/jd/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/jd/{jd_id}",
+      "url": "/jd/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/jd/{jd_id}/close",
+      "url": "/jd/invalid/close",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/resumes/upload",
+      "url": "/resumes/upload",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/resumes/upload-pool",
+      "url": "/resumes/upload-pool",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/resumes/upload-bulk",
+      "url": "/resumes/upload-bulk",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/resumes/upload-bulk-pool",
+      "url": "/resumes/upload-bulk-pool",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/resumes/pool-matches",
+      "url": "/resumes/pool-matches",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/resumes/import-from-pool",
+      "url": "/resumes/import-from-pool",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/resumes/stats",
+      "url": "/resumes/stats",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/resumes/all-data",
+      "url": "/resumes/all-data",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/resumes/",
+      "url": "/resumes/",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/resumes/shortlist",
+      "url": "/resumes/shortlist",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/resumes/bulk-archive",
+      "url": "/resumes/bulk-archive",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/resumes/bulk-restore",
+      "url": "/resumes/bulk-restore",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/resumes/bulk-delete",
+      "url": "/resumes/bulk-delete",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/resumes/{candidate_id}",
+      "url": "/resumes/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/resumes/{candidate_id}",
+      "url": "/resumes/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/resumes/{candidate_id}/resume-file",
+      "url": "/resumes/invalid/resume-file",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/resumes/{candidate_id}/draft-email",
+      "url": "/resumes/invalid/draft-email",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/resumes/{candidate_id}/send-email",
+      "url": "/resumes/invalid/send-email",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/resumes/{candidate_id}/quiz-result",
+      "url": "/resumes/invalid/quiz-result",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/quiz/generate",
+      "url": "/quiz/generate",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/quiz/from-file",
+      "url": "/quiz/from-file",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/quiz/",
+      "url": "/quiz/",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/quiz/{quiz_id}/questions",
+      "url": "/quiz/invalid/questions",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/quiz/send-links",
+      "url": "/quiz/send-links",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/quiz/start",
+      "url": "/quiz/start",
+      "status": 404,
+      "body": "{\"detail\": \"Invalid quiz token\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/quiz/submit",
+      "url": "/quiz/submit",
+      "status": 422,
+      "body": "{\"detail\": [{\"type\": \"missing\", \"loc\": [\"body\", \"attempt_id\"], \"msg\": \"Field required\", \"input\": {}}, {\"type\": \"missing\", \"loc\": [\"body\", \"answers\"], \"msg\": \"Field required\", \"inpu"
+    },
+    {
+      "method": "GET",
+      "path": "/quiz/{quiz_id}/results",
+      "url": "/quiz/invalid/results",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/quiz/evaluate-code",
+      "url": "/quiz/evaluate-code",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/metrics/untagged",
+      "url": "/analytics/metrics/untagged",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/summary/{job_id}",
+      "url": "/analytics/summary/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/rankings/{job_id}",
+      "url": "/analytics/rankings/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/skill-gap/{job_id}",
+      "url": "/analytics/skill-gap/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/export/excel/{job_id}",
+      "url": "/analytics/export/excel/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/export/pdf/{job_id}",
+      "url": "/analytics/export/pdf/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/analytics/rank/{job_id}",
+      "url": "/analytics/rank/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/mlflow/runs",
+      "url": "/analytics/mlflow/runs",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/analytics/mlflow/evaluate",
+      "url": "/analytics/mlflow/evaluate",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/candidate/jobs",
+      "url": "/candidate/jobs",
+      "status": 200,
+      "body": "[]"
+    },
+    {
+      "method": "GET",
+      "path": "/candidate/jobs/{job_id}",
+      "url": "/candidate/jobs/invalid",
+      "status": 404,
+      "body": "{\"detail\": \"Job not found\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/candidate/apply/{job_id}",
+      "url": "/candidate/apply/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/candidate/my-applications",
+      "url": "/candidate/my-applications",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/candidate/feedback/{candidate_id}",
+      "url": "/candidate/feedback/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/candidate/results",
+      "url": "/candidate/results",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/candidate/internal/auto-send-quiz/{job_id}",
+      "url": "/candidate/internal/auto-send-quiz/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/candidate/quiz",
+      "url": "/candidate/quiz",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/candidate/mock-test",
+      "url": "/candidate/mock-test",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/candidate/evaluate-resume/{job_id}",
+      "url": "/candidate/evaluate-resume/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/candidate/my-resumes",
+      "url": "/candidate/my-resumes",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/candidate/my-resumes",
+      "url": "/candidate/my-resumes",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/candidate/my-resumes/{resume_id}",
+      "url": "/candidate/my-resumes/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/candidate/my-resumes/{resume_id}",
+      "url": "/candidate/my-resumes/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/candidate/my-resumes/{resume_id}/download",
+      "url": "/candidate/my-resumes/invalid/download",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/candidate/apply-with-vault/{job_id}",
+      "url": "/candidate/apply-with-vault/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/candidate/resume-fit/{job_id}",
+      "url": "/candidate/resume-fit/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/candidate/resume/enhance",
+      "url": "/candidate/resume/enhance",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/candidate/resume/build",
+      "url": "/candidate/resume/build",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/candidate/cover-letter/{job_id}",
+      "url": "/candidate/cover-letter/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/candidate/career-analysis",
+      "url": "/candidate/career-analysis",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/candidate/resume/generate-pdf",
+      "url": "/candidate/resume/generate-pdf",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/candidate/resume/parse-for-builder",
+      "url": "/candidate/resume/parse-for-builder",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/notifications/",
+      "url": "/notifications/",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "PUT",
+      "path": "/notifications/{notif_id}/read",
+      "url": "/notifications/invalid/read",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "PUT",
+      "path": "/notifications/read-all",
+      "url": "/notifications/read-all",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/notifications/",
+      "url": "/notifications/",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/notifications/{notif_id}",
+      "url": "/notifications/invalid",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "PUT",
+      "path": "/notifications/preferences",
+      "url": "/notifications/preferences",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    },
+    {
+      "method": "POST",
+      "path": "/agent/score-resume",
+      "url": "/agent/score-resume",
+      "status": 403,
+      "body": "{\"detail\": \"Not authenticated\"}"
+    }
+  ]
+}

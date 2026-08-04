@@ -1,0 +1,1397 @@
+[
+  {
+    "resume": "BENetDeveloperRohitPawar (1).pdf",
+    "latency_ms": 32342.3,
+    "ai_scores": {
+      "skill_score": 68,
+      "experience_score": 60,
+      "project_score": 70,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "Web API / REST API",
+        "Git source code management",
+        "SQL Server",
+        "Authentication and Authorization",
+        "Web API security",
+        "Error handling (implicit via banking and production APIs)"
+      ],
+      "missing_must_have": [
+        "Design patterns (explicit usage not demonstrated)",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Performance tuning (explicit evidence missing)"
+      ],
+      "matched_good_to_have": [],
+      "reasoning": "Candidate meets core .NET Core and API development requirements with hands-on experience in security-heavy systems like banking and real-time apps. However, several architectural fundamentals such as design patterns, caching, validation strategies, and performance tuning are not explicitly demonstrated. SQL Server exposure exists but is relatively shallow compared to MySQL. Profile shows solid implementation skills but limited evidence of deeper system-level decision-making.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [
+        "Entire experience at a single company",
+        "Limited explicit exposure to performance tuning and caching",
+        "Design patterns and architectural depth not clearly articulated"
+      ],
+      "standout_factors": [
+        "Hands-on experience with JWT, RBAC, and Identity Framework",
+        "Exposure to real-time systems using SignalR",
+        "Azure CI/CD and deployment experience",
+        "Projects in finance and banking domains"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "medium"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "Shahid Ali-BE.Net Developer.pdf",
+    "latency_ms": 35654.0,
+    "ai_scores": {
+      "skill_score": 72,
+      "experience_score": 75,
+      "project_score": 78,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "Web API development",
+        "SQL Server",
+        "Error handling (implicit via production APIs)",
+        "Performance optimization (implicit via high-performance APIs)"
+      ],
+      "missing_must_have": [
+        "Git source code management",
+        "Design patterns (explicit usage)",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Web API security",
+        "Authentication and authorization"
+      ],
+      "matched_good_to_have": [],
+      "reasoning": "The candidate meets the core .NET Core, C#, SQL Server, and Web API requirements with solid hands-on experience building production systems. However, several critical must-have areas such as design patterns, caching, validation strategies, and API security/auth are not explicitly demonstrated, which is a concern for a mid-level role. Experience aligns well with the 3–6 year range, but depth in application architecture and cross-cutting concerns appears shallow. Strong Azure exposure adds value but does not compensate for missing fundamentals expected in this role.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [
+        "No explicit mention of Git despite it being a must-have",
+        "Missing evidence of security, authentication, and authorization implementation",
+        "Design patterns not demonstrated or articulated"
+      ],
+      "standout_factors": [
+        "Strong Azure ecosystem experience for a 4.2-year profile",
+        "Hands-on microservices and asynchronous processing exposure",
+        "Worked on scalable, cloud-native production systems"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "BENetShrikantGaikwad.pdf",
+    "latency_ms": 24067.4,
+    "ai_scores": {
+      "skill_score": 78,
+      "experience_score": 85,
+      "project_score": 80,
+      "matched_must_have": [
+        ".NET Core",
+        "Web API",
+        "Git",
+        "SQL Server",
+        "C#",
+        ".NET Core APIs",
+        "Authentication and Authorization",
+        "Web API security",
+        "Error handling"
+      ],
+      "missing_must_have": [
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Performance optimization"
+      ],
+      "matched_good_to_have": [
+        ".NET Framework"
+      ],
+      "reasoning": "The candidate has solid hands-on experience with .NET Core, Web APIs, SQL Server, and Azure-backed applications over 4.6 years, which aligns well with the core stack. Authentication and authorization are evidenced through Identity Framework usage, and multiple real-world projects suggest practical API development exposure. However, there is no explicit evidence of design pattern usage, caching strategies, performance tuning, or structured validation approaches, which are critical differentiators at this experience level. Overall capability is strong but depth in backend architecture and optimization is not clearly demonstrated.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [
+        "Lack of explicit mention of design patterns and performance optimization despite mid-level experience"
+      ],
+      "standout_factors": [
+        "End-to-end project ownership in cloud-hosted .NET Core systems",
+        "Consistent use of Azure, CI/CD, and modern web stack",
+        "Relevant real-world domains like logistics, inventory, and healthcare"
+      ],
+      "hire_recommendation": "hire",
+      "confidence": "medium"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "Shahid Ali-BE.Net Developer.pdf",
+    "latency_ms": 34631.7,
+    "ai_scores": {
+      "skill_score": 68,
+      "experience_score": 85,
+      "project_score": 70,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "Web API development",
+        ".NET Core APIs",
+        "SQL Server"
+      ],
+      "missing_must_have": [
+        "Git source code management",
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Web API security",
+        "Authentication and authorization",
+        "Error handling",
+        "Performance tuning and issue handling"
+      ],
+      "matched_good_to_have": [
+        ".NET Framework"
+      ],
+      "reasoning": "The candidate clearly meets the core .NET Core, C#, SQL Server, and REST/Web API requirements with over 4 years of hands-on experience and multiple production projects. However, many critical backend fundamentals explicitly required for the role—such as design patterns, caching, security, authentication/authorization, validation, error handling, performance tuning, and Git—are not mentioned anywhere in the profile. Azure and microservices exposure are strong but are not substitutes for these missing must-have competencies. Overall, the profile shows solid implementation experience but notable gaps in foundational backend engineering expectations for this role.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [
+        "No mention of Git or any source control tool",
+        "No explicit evidence of security, authentication, or authorization experience",
+        "No mention of caching or performance optimization despite backend-heavy role"
+      ],
+      "standout_factors": [
+        "Strong Azure ecosystem experience",
+        "Multiple real-world REST API and microservices projects",
+        "Consistent use of .NET Core and Entity Framework Core across roles"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "Shahid Ali-BE.Net Developer.pdf",
+    "latency_ms": 37416.0,
+    "ai_scores": {
+      "skill_score": 55,
+      "experience_score": 80,
+      "project_score": 70,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "SQL Server"
+      ],
+      "missing_must_have": [
+        "Web API",
+        "Git source code management",
+        ".NET Core APIs",
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Web API security",
+        "Authentication & Authorization",
+        "Error handling",
+        "Performance tuning"
+      ],
+      "matched_good_to_have": [
+        ".NET Framework"
+      ],
+      "reasoning": "The candidate has solid hands-on experience with .NET Core, C#, and SQL Server across multiple production projects and 4.2 years total experience, which fits the required range. However, several core backend engineering expectations such as Git usage, authentication/authorization, caching, design patterns, and performance tuning are not explicitly mentioned anywhere. REST APIs are present, but Web API concepts and security are not clearly articulated as skills. Overall profile is strong in Azure services and API development but thin on fundamental backend engineering practices required for this role.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [
+        "No explicit Git/source control experience",
+        "No mention of authentication or authorization",
+        "Caching, validation, and error handling not documented",
+        "Design patterns not mentioned"
+      ],
+      "standout_factors": [
+        "Strong Azure ecosystem exposure",
+        "Microservices experience",
+        "Consistent .NET Core and EF Core usage across roles"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "medium"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "Shahid Ali-BE.Net Developer.pdf",
+    "latency_ms": 34899.8,
+    "ai_scores": {
+      "skill_score": 45,
+      "experience_score": 80,
+      "project_score": 65,
+      "matched_must_have": [
+        ".NET Core",
+        "Web API",
+        "SQL Server",
+        "C#",
+        ".NET Core APIs"
+      ],
+      "missing_must_have": [
+        "Git source code management",
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Web API security",
+        "authentication and authorization",
+        "Error handling",
+        "Performance issue handling"
+      ],
+      "matched_good_to_have": [
+        ".NET Framework"
+      ],
+      "reasoning": "Candidate has 4.5 years of experience and solid hands-on work with .NET Core, REST APIs, C#, and SQL Server across multiple production projects. However, there is no explicit mention of several critical backend fundamentals such as Git usage, design patterns, caching, security, authentication/authorization, validation, or performance handling. Projects focus heavily on Azure services and microservices but lack stated evidence of core API robustness and engineering best practices required by the role.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [
+        "No explicit Git source control experience",
+        "No stated API security or authentication/authorization experience",
+        "No evidence of caching, performance optimization, or design patterns"
+      ],
+      "standout_factors": [
+        "Strong exposure to Azure services and cloud-native microservices",
+        "Consistent use of .NET Core and Entity Framework Core in production systems"
+      ],
+      "hire_recommendation": "no_hire",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "BENetDeveloperRohitPawar (1).pdf",
+    "latency_ms": 41436.7,
+    "ai_scores": {
+      "skill_score": 48,
+      "experience_score": 82,
+      "project_score": 70,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "SQL Server",
+        "Git source code management",
+        "Web API security"
+      ],
+      "missing_must_have": [
+        "Web API",
+        ".NET Core APIs",
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Authentication & Authorization",
+        "Error handling",
+        "Performance issue handling"
+      ],
+      "matched_good_to_have": [],
+      "reasoning": "Candidate has solid hands-on experience with .NET Core, C#, REST APIs, SQL Server, and Git across multiple backend projects. However, many core backend engineering expectations such as design patterns, caching, validation strategies, error handling, performance tuning, and explicit authentication/authorization concepts are not stated. SQL Server exposure is relatively limited compared to overall experience. Skill coverage is implementation-heavy but weak on foundational and architectural concerns required by the role.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [
+        "Multiple critical must-have skills are not explicitly mentioned",
+        "Limited SQL Server experience relative to total years",
+        "No evidence of design patterns or performance engineering"
+      ],
+      "standout_factors": [
+        "Consistent .NET Core backend experience",
+        "Real-world projects in finance and banking domains",
+        "Hands-on API security tools like JWT and RBAC"
+      ],
+      "hire_recommendation": "no_hire",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "Shahid Ali-BE.Net Developer.pdf",
+    "latency_ms": 38029.8,
+    "ai_scores": {
+      "skill_score": 55,
+      "experience_score": 80,
+      "project_score": 70,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "ASP.NET Core APIs",
+        "Web API",
+        "SQL Server"
+      ],
+      "missing_must_have": [
+        "Git",
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Web API security",
+        "Authentication and Authorization",
+        "Error handling",
+        "Performance optimization"
+      ],
+      "matched_good_to_have": [
+        ".NET Framework"
+      ],
+      "reasoning": "The candidate has solid hands-on experience with C#, .NET Core, ASP.NET Core, REST APIs, and SQL Server across multiple production projects. However, a significant portion of the role’s core engineering expectations—such as security, authentication/authorization, caching, validation, design patterns, Git usage, and performance optimization—are not explicitly mentioned anywhere in the profile. Azure and microservices exposure is strong but does not compensate for the missing foundational backend engineering concepts required by the role.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [
+        "No explicit mention of Git or version control",
+        "No evidence of authentication or authorization experience",
+        "No stated experience with caching mechanisms",
+        "Design patterns and validation approaches not mentioned"
+      ],
+      "standout_factors": [
+        "Strong Azure cloud ecosystem experience",
+        "Multiple real-world backend and microservices projects",
+        "Consistent use of .NET Core and Entity Framework Core"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "BENetShrikantGaikwad.pdf",
+    "latency_ms": 26637.3,
+    "ai_scores": {
+      "skill_score": 55,
+      "experience_score": 70,
+      "project_score": 65,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "SQL Server",
+        "Git",
+        "Web API"
+      ],
+      "missing_must_have": [
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Web API security",
+        "Authentication & Authorization",
+        "Error handling",
+        "Performance tuning"
+      ],
+      "matched_good_to_have": [],
+      "reasoning": "The candidate clearly meets the core platform requirements with .NET Core, C#, SQL Server, Git, and Web API explicitly listed and used across work history and projects. However, there is no explicit mention of several critical backend engineering competencies such as design patterns, caching, performance tuning, or structured error handling. Security-related expectations are only partially implied via Identity Framework, but authentication/authorization and Web API security are not explicitly stated and therefore cannot be credited. Overall experience aligns with the lower bound of the required range but depth in backend engineering fundamentals is not well evidenced.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [
+        "Lack of explicit mention of design patterns and performance tuning",
+        "No stated experience with caching or advanced backend optimization",
+        "Security skills not explicitly described despite backend focus"
+      ],
+      "standout_factors": [
+        "Consistent hands-on experience with .NET Core across all projects",
+        "Exposure to Azure and CI/CD tooling via Azure DevOps",
+        "End-to-end project involvement from APIs to frontend integration"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "medium"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "BENetDeveloperRohitPawar (1).pdf",
+    "latency_ms": 33814.3,
+    "ai_scores": {
+      "skill_score": 72,
+      "experience_score": 90,
+      "project_score": 85,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "Web API",
+        ".NET Core APIs",
+        "Git source code management",
+        "SQL Server",
+        "Web API security",
+        "authentication and authorization",
+        "Performance tuning and issue handling"
+      ],
+      "missing_must_have": [
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Error handling"
+      ],
+      "matched_good_to_have": [],
+      "reasoning": "The candidate has 3.42 years of hands-on experience with .NET Core, C#, REST/Web APIs, Git, and SQL Server, which directly aligns with the core technical stack. Authentication and Web API security are clearly evidenced through consistent JWT usage, and performance tuning is demonstrated via database optimization work. However, there is no explicit mention of design patterns, caching, validation strategies, state management, or structured error handling. Project experience in secure banking and real-time systems strongly supports practical backend API development requirements.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [],
+      "standout_factors": [
+        "Consistent backend .NET Core experience across multiple projects",
+        "Hands-on API security using JWT",
+        "Experience with Azure CI/CD and real-time technologies like SignalR"
+      ],
+      "hire_recommendation": "hire",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "Shahid Ali-BE.Net Developer.pdf",
+    "latency_ms": 34750.9,
+    "ai_scores": {
+      "skill_score": 33,
+      "experience_score": 90,
+      "project_score": 80,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "Web API",
+        "SQL Server"
+      ],
+      "missing_must_have": [
+        "Git source code management",
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Web API security, authentication and authorization",
+        "Error handling",
+        "Performance optimization"
+      ],
+      "matched_good_to_have": [
+        ".NET Framework"
+      ],
+      "reasoning": "The candidate has 4.2 years of experience, which fits the required 3–6 year range, and shows strong hands-on work with .NET Core, C#, REST/Web APIs, and SQL Server. Multiple projects demonstrate building backend APIs using .NET Core and Entity Framework Core. However, several core architectural and cross-cutting concerns such as design patterns, caching, validation, security/authentication, error handling, and Git usage are not explicitly mentioned. This creates gaps against the full must-have skill set despite solid core development experience.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [
+        "No explicit mention of Git or source code management",
+        "No stated experience with API security, authentication, or authorization"
+      ],
+      "standout_factors": [
+        "Strong .NET Core and C# experience aligned with required stack",
+        "Extensive Azure cloud and services exposure",
+        "Multiple real-world backend API projects"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "BENetShrikantGaikwad.pdf",
+    "latency_ms": 31146.0,
+    "ai_scores": {
+      "skill_score": 55,
+      "experience_score": 88,
+      "project_score": 80,
+      "matched_must_have": [
+        ".NET Core",
+        "Web API",
+        "Git source code management",
+        "SQL Server",
+        "C#",
+        ".NET Core APIs",
+        "Web API security",
+        "Authentication and Authorization"
+      ],
+      "missing_must_have": [
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Error handling",
+        "Performance tuning"
+      ],
+      "matched_good_to_have": [],
+      "reasoning": "The candidate has strong hands-on experience with .NET Core, C#, REST/Web APIs, SQL Server, and Git, supported by nearly 4 years of relevant work experience. Identity Framework directly supports authentication and authorization, aligning with Web API security requirements. However, there is no explicit evidence of design patterns, caching, validation strategies, error handling, or performance tuning in the provided profile. Projects demonstrate solid practical exposure but do not cover all backend engineering fundamentals listed as must-haves.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [
+        "Several backend fundamentals such as caching, design patterns, and performance tuning are not explicitly mentioned"
+      ],
+      "standout_factors": [
+        "Nearly 4 years of continuous .NET Core experience",
+        "Strong authentication experience using Identity Framework",
+        "Azure-based project exposure with real-world systems"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "BENetDeveloperRohitPawar (1).pdf",
+    "latency_ms": 32429.7,
+    "ai_scores": {
+      "skill_score": 68,
+      "experience_score": 85,
+      "project_score": 80,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "Web API development",
+        "Git source code management",
+        "SQL Server",
+        "Web API security",
+        "authentication and authorization",
+        "Performance tuning and issue handling"
+      ],
+      "missing_must_have": [
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Error handling"
+      ],
+      "matched_good_to_have": [],
+      "reasoning": "The candidate has explicit hands-on experience with .NET Core, C#, REST APIs, Git, and SQL Server across multiple backend roles and projects. Web API security, authentication, and authorization are clearly evidenced through JWT, Identity Framework, and RBAC usage. Performance tuning is indirectly supported via stated database optimization experience. However, there is no explicit mention of design patterns, caching, validation strategies, state management, or error-handling practices.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [],
+      "standout_factors": [
+        "Multiple real-world backend projects using .NET Core and REST APIs",
+        "Strong security exposure with JWT, RBAC, and Identity Framework",
+        "Experience with Azure CI/CD pipelines"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "Shahid Ali-BE.Net Developer.pdf",
+    "latency_ms": 33984.0,
+    "ai_scores": {
+      "skill_score": 45,
+      "experience_score": 90,
+      "project_score": 70,
+      "matched_must_have": [
+        ".NET Core",
+        "Web API",
+        "SQL Server",
+        "C#",
+        ".NET Core APIs"
+      ],
+      "missing_must_have": [
+        "Git source code management",
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Web API security",
+        "Authentication & Authorization",
+        "Error handling",
+        "Performance tuning and issue handling"
+      ],
+      "matched_good_to_have": [
+        ".NET Framework"
+      ],
+      "reasoning": "The candidate has strong hands-on experience with .NET Core, C#, REST/Web APIs, and SQL Server, evidenced across multiple roles and projects. Total experience of 4.4 years fits well within the 3–6 year requirement. However, several core backend engineering fundamentals such as Git usage, design patterns, caching, security, authentication/authorization, and performance tuning are not explicitly mentioned. Azure-centric backend and microservices experience strengthens practical implementation capability but does not fully cover all must-have areas.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [
+        "No explicit mention of Git source control",
+        "No stated experience with authentication/authorization or API security",
+        "Missing evidence of caching, performance tuning, and design patterns"
+      ],
+      "standout_factors": [
+        "Strong Azure cloud and microservices experience",
+        "Consistent use of .NET Core and REST APIs across projects",
+        "Solid SQL Server and Entity Framework Core background"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "BENetShrikantGaikwad.pdf",
+    "latency_ms": 30545.0,
+    "ai_scores": {
+      "skill_score": 72,
+      "experience_score": 90,
+      "project_score": 85,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "Web API",
+        "SQL Server",
+        "Git source code management",
+        ".NET Core APIs",
+        "Authentication and Authorization"
+      ],
+      "missing_must_have": [
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Web API security",
+        "Error handling",
+        "Performance tuning"
+      ],
+      "matched_good_to_have": [],
+      "reasoning": "The candidate has 4.6 years of experience, fitting squarely within the 3–6 year requirement. Core skills such as .NET Core, C#, Web API, SQL Server, Git, and REST APIs are explicitly listed and reinforced through work history and projects. Authentication and authorization are evidenced via Identity Framework and role-based access in projects. Several architectural and non-functional must-haves like design patterns, caching, performance tuning, and validation are not explicitly mentioned.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [],
+      "standout_factors": [
+        "Strong hands-on experience with .NET Core and Web API across multiple production projects",
+        "Practical implementation of authentication and authorization using Identity Framework",
+        "Cloud exposure with Azure and Azure DevOps in real-world systems"
+      ],
+      "hire_recommendation": "hire",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "BENetDeveloperRohitPawar (1).pdf",
+    "latency_ms": 32084.0,
+    "ai_scores": {
+      "skill_score": 72,
+      "experience_score": 85,
+      "project_score": 80,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "Web API development",
+        "Git source code management",
+        "SQL Server",
+        "Web API security",
+        "authentication and authorization",
+        "Performance tuning"
+      ],
+      "missing_must_have": [
+        "Testing",
+        "Code refactoring and debugging",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Error handling"
+      ],
+      "matched_good_to_have": [],
+      "missing_good_to_have": [
+        ".NET Framework",
+        "Design patterns"
+      ],
+      "reasoning": "The candidate has clear hands-on experience with .NET Core, C#, REST APIs, Git/GitHub, SQL Server, and Web API security using JWT, Identity Framework, and RBAC across multiple roles and projects. Azure CI/CD demonstrates deployment exposure, and database optimization, indexing, and stored procedures provide evidence of performance tuning. However, the resume does not explicitly mention testing practices, refactoring/debugging, state management, validation strategies, caching, or structured error handling. Overall experience of 3.4 years aligns well with the required range.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [
+        "Several core engineering practices such as testing, caching, validation, and error handling are not explicitly mentioned"
+      ],
+      "standout_factors": [
+        "Strong authentication and authorization experience with JWT, Identity Framework, and RBAC",
+        "Exposure to Azure CI/CD and secure backend systems",
+        "Multiple real-world backend projects with .NET Core and REST APIs"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "Shahid Ali-BE.Net Developer.pdf",
+    "latency_ms": 30856.8,
+    "ai_scores": {
+      "skill_score": 55,
+      "experience_score": 85,
+      "project_score": 75,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "Web API",
+        ".NET Core APIs",
+        "SQL Server"
+      ],
+      "missing_must_have": [
+        "Git source code management",
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Web API security",
+        "Authentication and Authorization",
+        "Error handling",
+        "Performance tuning"
+      ],
+      "matched_good_to_have": [
+        ".NET Framework"
+      ],
+      "missing_good_to_have": [],
+      "reasoning": "The candidate clearly demonstrates .NET Core, C#, REST APIs (Web API equivalent), and SQL Server with ~4 years of hands-on experience across multiple projects. However, there is no explicit evidence of Git usage, design patterns, state management, validation strategies, caching, API security, authentication/authorization, error handling, or performance tuning. Strong Azure and microservices experience adds value but does not compensate for several missing must-have backend fundamentals required by the role.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [
+        "Multiple core backend fundamentals are not explicitly evidenced in the resume",
+        "No explicit mention of Git or source code management tools"
+      ],
+      "standout_factors": [
+        "Solid .NET Core and C# experience within the required range",
+        "Strong exposure to Azure services and cloud-native microservices",
+        "Multiple real-world backend API projects"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "BENetShrikantGaikwad.pdf",
+    "latency_ms": 28307.2,
+    "ai_scores": {
+      "skill_score": 65,
+      "experience_score": 90,
+      "project_score": 85,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "Web API",
+        ".NET Core APIs",
+        "SQL Server",
+        "Git source code management",
+        "authentication and authorization",
+        "Web API security"
+      ],
+      "missing_must_have": [
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Error handling",
+        "Performance optimization"
+      ],
+      "matched_good_to_have": [],
+      "missing_good_to_have": [
+        ".NET Framework"
+      ],
+      "reasoning": "The candidate has strong evidence of .NET Core, C#, RESTful/Web APIs, SQL Server, and Git with 4+ years of hands-on experience. Authentication and authorization requirements are met through explicit use of Identity Framework in both skills and projects. However, there is no explicit mention of design patterns, state management, validation strategies, caching, error handling, or performance optimization, which are key must-have requirements. Project experience aligns well with backend API development but lacks coverage of these advanced backend concerns.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [
+        "Multiple core backend must-have skills (caching, performance optimization, validation, state management) are not explicitly evidenced"
+      ],
+      "standout_factors": [
+        "4.6 years of consistent .NET Core and C# experience",
+        "Hands-on Web API development with REST and Identity Framework",
+        "Strong cloud exposure with Microsoft Azure and Azure DevOps",
+        "Production-grade projects with role-based access and security"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "BENetDeveloperRohitPawar (1).pdf",
+    "latency_ms": 30694.2,
+    "ai_scores": {
+      "skill_score": 62,
+      "experience_score": 85,
+      "project_score": 78,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "SQL Server",
+        "Web API",
+        ".NET Core APIs",
+        "Git source code management",
+        "Authentication and Authorization",
+        "Web API security"
+      ],
+      "missing_must_have": [
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Error handling",
+        "Performance tuning"
+      ],
+      "matched_good_to_have": [],
+      "missing_good_to_have": [
+        ".NET Framework"
+      ],
+      "reasoning": "The candidate has strong evidence for core backend development skills including .NET Core, C#, REST/Web APIs, SQL Server, Git, and security using JWT and Identity Framework. However, the resume does not explicitly mention design patterns, state management, validation strategies, caching, structured error handling, or performance tuning beyond database optimization. Experience of 3.4 years aligns well with the required 3–6 year range, and multiple real-world backend projects demonstrate practical API and security implementation.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [],
+      "standout_factors": [
+        "Hands-on experience with JWT, Identity Framework, and RBAC for API security",
+        "Multiple production backend projects using .NET Core and REST APIs",
+        "CI/CD exposure using Azure pipelines"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {
+      "faithfulness": 0.4583333333333333,
+      "answer_relevancy": 0.5498798217439034,
+      "context_recall": 0.0
+    }
+  },
+  {
+    "resume": "Shahid Ali-BE.Net Developer.pdf",
+    "latency_ms": 30347.3,
+    "ai_scores": {
+      "skill_score": 55,
+      "experience_score": 85,
+      "project_score": 80,
+      "matched_must_have": [
+        ".net core",
+        "web api development",
+        "rest apis",
+        "c#",
+        "sql server",
+        "testing applications",
+        "deploying applications"
+      ],
+      "missing_must_have": [
+        "git source code management",
+        "design patterns",
+        "state management",
+        "validation approaches",
+        "caching fundamentals and implementation",
+        "web api security",
+        "authentication and authorization",
+        "error handling",
+        "performance tuning and issue handling",
+        "code refactoring and debugging",
+        "software documentation (SDLC)"
+      ],
+      "matched_good_to_have": [
+        ".net framework"
+      ],
+      "missing_good_to_have": [],
+      "reasoning": "The candidate has strong hands-on experience with .NET Core (4.2 years), C#, REST APIs, and SQL Server, aligning well with the core API development requirements. Testing is evidenced through MSTest and Moq, and CI/CD indicates experience with deploying applications. However, there is no explicit mention of Git, design patterns, caching, state management, validation, security/authentication, or performance tuning, which are key must-have requirements.",
+      "domain_fit": "adjacent",
+      "seniority_match": "exact",
+      "red_flags": [
+        "Several critical must-have skills such as Git, authentication/authorization, caching, and design patterns are not explicitly mentioned"
+      ],
+      "standout_factors": [
+        "Strong Azure ecosystem experience including Functions, Service Bus, and Application Insights",
+        "Consistent .NET Core and REST API experience across multiple projects"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {
+      "faithfulness": 0.4807692307692308,
+      "answer_relevancy": 0.5376257012128823,
+      "context_recall": 0.0
+    }
+  },
+  {
+    "resume": "BENetShrikantGaikwad.pdf",
+    "latency_ms": 26580.7,
+    "ai_scores": {
+      "skill_score": 65,
+      "experience_score": 85,
+      "project_score": 80,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "Web API",
+        "Git source code management",
+        "SQL Server",
+        "Developing .NET Core APIs",
+        "Web API security",
+        "authentication and authorization"
+      ],
+      "missing_must_have": [
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Error handling",
+        "Performance tuning and issue handling"
+      ],
+      "matched_good_to_have": [],
+      "missing_good_to_have": [
+        ".NET Framework"
+      ],
+      "reasoning": "The candidate has 3.9 years of experience working with C#, .NET Core, REST APIs, SQL Server, and Git, which aligns well with the core technical stack. Identity Framework is explicitly listed, satisfying authentication and authorization requirements, and multiple projects demonstrate hands-on .NET Core API development. However, the resume does not explicitly mention design patterns, state management, caching, validation approaches, error handling, or performance tuning. These gaps reduce alignment with several critical must-have expectations.",
+      "domain_fit": "different",
+      "seniority_match": "exact",
+      "red_flags": [],
+      "standout_factors": [
+        "Strong end-to-end .NET Core API experience across multiple production projects",
+        "Hands-on use of Identity Framework for authentication and authorization",
+        "Consistent use of Azure, Git, and Azure DevOps within Agile teams"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {
+      "faithfulness": 0.3181818181818182,
+      "answer_relevancy": 0.6528625821791118,
+      "context_recall": 0.0
+    }
+  },
+  {
+    "resume": "BENetDeveloperRohitPawar (1).pdf",
+    "latency_ms": 33438.7,
+    "ai_scores": {
+      "skill_score": 64,
+      "experience_score": 80,
+      "project_score": 85,
+      "matched_must_have": [
+        ".NET Core",
+        "Web API",
+        "Git source code management",
+        "SQL Server",
+        "C#",
+        ".NET Core APIs",
+        "Web API security",
+        "Authentication & Authorization",
+        "Performance optimization"
+      ],
+      "missing_must_have": [
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Error handling"
+      ],
+      "matched_good_to_have": [],
+      "missing_good_to_have": [
+        ".NET Framework"
+      ],
+      "reasoning": "The candidate has 3.4 years of experience with strong hands-on work in .NET Core, C#, REST APIs, JWT authentication, API security, Git, and SQL Server as shown across multiple roles and projects. Performance optimization is evidenced through explicit database optimization, indexing, and stored procedures. However, there is no explicit mention of design patterns, caching, state management, validation strategies, or error handling approaches. Overall, the profile aligns well with core backend API development but misses several architectural fundamentals listed as must-haves.",
+      "domain_fit": "adjacent",
+      "seniority_match": "exact",
+      "red_flags": [],
+      "standout_factors": [
+        "Multiple real-world .NET Core backend projects",
+        "Strong API security experience with JWT and RBAC",
+        "Experience with both SQL Server and MySQL",
+        "Hands-on CI/CD and Azure exposure"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {
+      "faithfulness": 0.85,
+      "answer_relevancy": 0.5162487899405006,
+      "context_recall": 0.0
+    }
+  },
+  {
+    "resume": "Shahid Ali-BE.Net Developer.pdf",
+    "latency_ms": 36984.7,
+    "ai_scores": {
+      "skill_score": 35,
+      "experience_score": 90,
+      "project_score": 80,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "Web API development",
+        "Hands-on experience with .NET Core APIs",
+        "SQL Server",
+        "Testing and deployment of applications"
+      ],
+      "missing_must_have": [
+        "Git source code management",
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Web API security",
+        "Authentication and authorization",
+        "Error handling",
+        "Performance optimization",
+        "Debugging and refactoring code",
+        "Technical documentation"
+      ],
+      "matched_good_to_have": [
+        ".NET Framework"
+      ],
+      "missing_good_to_have": [],
+      "reasoning": "The candidate has 4.6 years of experience with strong evidence in .NET Core, C#, REST APIs, SQL Server, and hands-on backend API development across multiple projects. Testing is supported by MSTest and Moq, and deployment exposure is indicated via CI/CD. However, several core must-have areas such as Git usage, design patterns, caching, security/authentication, state management, and validation are not explicitly mentioned in the profile. Overall, the experience aligns well in duration and core development but lacks breadth across several required engineering fundamentals.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [
+        "No explicit evidence of Git or source control usage",
+        "Missing security, authentication, and authorization experience",
+        "No mention of caching, state management, or validation approaches"
+      ],
+      "standout_factors": [
+        "Strong Azure ecosystem experience",
+        "Microservices and cloud-native backend development",
+        "Consistent hands-on work with .NET Core and REST APIs"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "medium"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {
+      "faithfulness": 0.35294117647058826,
+      "answer_relevancy": 0.5563539143455047,
+      "context_recall": 0.0
+    }
+  },
+  {
+    "resume": "BENetShrikantGaikwad.pdf",
+    "latency_ms": 27730.0,
+    "ai_scores": {
+      "skill_score": 65,
+      "experience_score": 90,
+      "project_score": 80,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "Web API development",
+        "Git source code management",
+        "SQL Server",
+        "Hands-on experience with .NET Core APIs",
+        "Web API security, authentication and authorization"
+      ],
+      "missing_must_have": [
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Error handling",
+        "Performance tuning and issue handling"
+      ],
+      "matched_good_to_have": [],
+      "missing_good_to_have": [
+        ".NET Framework"
+      ],
+      "reasoning": "The candidate has 4.6 years of experience, which fits well within the 3–6 year requirement. Strong evidence exists for .NET Core, C#, REST/Web APIs, SQL Server, Git, and authentication/authorization through Identity Framework across work history and projects. However, the resume does not explicitly mention design patterns, caching, state management, validation strategies, error handling, or performance tuning. These gaps impact alignment with several core must-have requirements.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [],
+      "standout_factors": [
+        "Consistent .NET Core and Web API experience across multiple production projects",
+        "Hands-on authentication and authorization using Identity Framework",
+        "Azure and Azure DevOps exposure supporting modern cloud-based development"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {
+      "faithfulness": 0.6666666666666666,
+      "answer_relevancy": 0.5205764527183943,
+      "context_recall": 0.0
+    }
+  },
+  {
+    "resume": "BENetDeveloperRohitPawar (1).pdf",
+    "latency_ms": 32251.8,
+    "ai_scores": {
+      "skill_score": 65,
+      "experience_score": 85,
+      "project_score": 80,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "Web API",
+        "REST API",
+        "Git source code management",
+        "SQL Server",
+        "Authentication and Authorization",
+        "Web API security"
+      ],
+      "missing_must_have": [
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Error handling",
+        "Performance optimization"
+      ],
+      "matched_good_to_have": [],
+      "missing_good_to_have": [
+        ".NET Framework"
+      ],
+      "reasoning": "The candidate clearly demonstrates .NET Core, C#, REST/Web APIs, Git, SQL Server, and authentication/authorization through JWT and Identity Framework across multiple roles and projects. However, the resume does not explicitly mention design patterns (e.g., SOLID or repository), state management, validation strategies, caching, structured error handling, or application-level performance optimization. Experience of 3.7 years fits well within the required 3–6 year range, and projects show hands-on backend development using ASP.NET Core.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [],
+      "standout_factors": [
+        "Consistent ASP.NET Core backend experience across all roles",
+        "Hands-on API security with JWT and Identity Framework",
+        "Exposure to Azure CI/CD, SignalR, and modern UI frameworks like Blazor"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {
+      "faithfulness": 0.7045454545454546,
+      "answer_relevancy": 0.46261901410535355,
+      "context_recall": 0.0
+    }
+  },
+  {
+    "resume": "Shahid Ali-BE.Net Developer.pdf",
+    "latency_ms": 30405.6,
+    "ai_scores": {
+      "skill_score": 45,
+      "experience_score": 80,
+      "project_score": 75,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "SQL Server",
+        "Web API",
+        ".NET Core APIs"
+      ],
+      "missing_must_have": [
+        "Git source code management",
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Web API security",
+        "Authentication and Authorization",
+        "Error handling",
+        "Performance optimization"
+      ],
+      "matched_good_to_have": [],
+      "missing_good_to_have": [
+        ".NET Framework"
+      ],
+      "reasoning": "The candidate has strong hands-on experience with .NET Core, C#, SQL Server, and REST APIs across 4.7 years, which directly maps to core backend development requirements. Multiple projects demonstrate building APIs and cloud-native services using ASP.NET Core and Azure. However, the resume does not explicitly mention Git, design patterns, authentication/authorization, caching, state management, validation, error handling, or performance optimization. These gaps significantly impact alignment with the full set of must-have skills.",
+      "domain_fit": "adjacent",
+      "seniority_match": "exact",
+      "red_flags": [
+        "No explicit mention of Git or source control",
+        "Missing several core backend fundamentals like security, caching, and design patterns"
+      ],
+      "standout_factors": [
+        "Solid 4.7 years of .NET Core and C# experience",
+        "Strong exposure to Azure cloud services and microservices",
+        "Multiple real-world backend projects with REST APIs"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {
+      "faithfulness": 0.5777777777777777,
+      "answer_relevancy": 0.37266576949620106,
+      "context_recall": 0.0
+    }
+  },
+  {
+    "resume": "BENetShrikantGaikwad.pdf",
+    "latency_ms": 27954.6,
+    "ai_scores": {
+      "skill_score": 62,
+      "experience_score": 85,
+      "project_score": 78,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "Web API",
+        ".NET Core APIs",
+        "Git source code management",
+        "SQL Server",
+        "Authentication & Authorization",
+        "Web API security"
+      ],
+      "missing_must_have": [
+        "Design patterns",
+        "State management",
+        "Validation approaches",
+        "Caching fundamentals and implementation",
+        "Error handling",
+        "Performance issue handling"
+      ],
+      "matched_good_to_have": [],
+      "missing_good_to_have": [
+        ".NET Framework"
+      ],
+      "reasoning": "The candidate has strong evidence for core .NET Core, C#, Web API, SQL Server, and Git with 4+ years of hands-on experience. Authentication and authorization are explicitly supported via Identity Framework used across projects. However, there is no explicit mention of design patterns, caching, state management, validation approaches, error handling, or performance tuning. Projects demonstrate solid full-stack and cloud exposure but do not directly cover several required backend engineering fundamentals.",
+      "domain_fit": "adjacent",
+      "seniority_match": "exact",
+      "red_flags": [
+        "Several must-have backend fundamentals are not explicitly mentioned despite 4.6 years of experience"
+      ],
+      "standout_factors": [
+        "Consistent 4.6 years of .NET Core and C# experience",
+        "Hands-on Azure, Azure DevOps, and cloud-hosted production systems",
+        "Multiple real-world enterprise projects using ASP.NET Core and Web API"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": false,
+    "ragas_metrics": {
+      "faithfulness": 0.5333333333333333,
+      "answer_relevancy": 0.33424954383042926,
+      "context_recall": 0.46153846153846156
+    }
+  },
+  {
+    "resume": "BENetDeveloperRohitPawar (1).pdf",
+    "latency_ms": 27618.0,
+    "ai_scores": {
+      "skill_score": 72,
+      "experience_score": 78,
+      "project_score": 82,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "Web API",
+        ".NET Core APIs",
+        "Git",
+        "SQL Server",
+        "Web API Security",
+        "Authentication and Authorization",
+        "Performance Optimization"
+      ],
+      "missing_must_have": [
+        "Design Patterns",
+        "State Management",
+        "Validation Techniques",
+        "Caching Fundamentals and Implementation",
+        "Error Handling"
+      ],
+      "matched_good_to_have": [],
+      "missing_good_to_have": [
+        ".NET Framework"
+      ],
+      "reasoning": "The candidate has 3.4 years of hands-on experience with .NET Core, C#, REST APIs, SQL Server, and Git, supported by multiple backend roles and relevant projects. Authentication and authorization are well covered through JWT, Identity Framework, and RBAC, and Web API security is explicitly mentioned. Performance optimization is evidenced via database optimization and indexing, but there is no explicit mention of design patterns, caching, validation techniques, state management, or structured error handling. Overall project work aligns strongly with backend .NET Core development but misses several architectural must-haves.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [],
+      "standout_factors": [
+        "Strong authentication and authorization experience using JWT, Identity Framework, and RBAC",
+        "Hands-on Azure and CI/CD exposure",
+        "Real-time and scalable systems experience with SignalR",
+        "Multiple end-to-end backend projects in financial and data-driven domains"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": true,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "Shahid Ali-BE.Net Developer.pdf",
+    "latency_ms": 30717.8,
+    "ai_scores": {
+      "skill_score": 55,
+      "experience_score": 80,
+      "project_score": 70,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "Web API",
+        ".NET Core APIs",
+        "SQL Server"
+      ],
+      "missing_must_have": [
+        "Git",
+        "Design Patterns",
+        "State Management",
+        "Validation Approaches",
+        "Caching Fundamentals and Implementation",
+        "Web API Security",
+        "Authentication and Authorization",
+        "Error Handling",
+        "Performance Issue Handling"
+      ],
+      "matched_good_to_have": [
+        ".NET Framework"
+      ],
+      "missing_good_to_have": [],
+      "reasoning": "The candidate has strong evidence of .NET Core, C#, REST/Web APIs, and SQL Server with 4+ years of hands-on experience across multiple projects and roles. However, the resume does not explicitly mention several critical backend fundamentals such as design patterns, authentication/authorization, caching, validation, state management, or Git usage. While Azure Application Insights suggests monitoring, it does not explicitly demonstrate performance issue handling or structured error handling. Overall experience and projects align well with core development but miss several required architectural and security-focused skills.",
+      "domain_fit": "exact",
+      "seniority_match": "exact",
+      "red_flags": [
+        "No explicit evidence of authentication or authorization implementation",
+        "No mention of Git or source control usage",
+        "Missing core backend fundamentals like caching, validation, and state management"
+      ],
+      "standout_factors": [
+        "Strong .NET Core and REST API experience",
+        "Hands-on Azure cloud and microservices background",
+        "Relevant project experience building scalable backend systems"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": true,
+    "ragas_metrics": {}
+  },
+  {
+    "resume": "BENetShrikantGaikwad.pdf",
+    "latency_ms": 34725.8,
+    "ai_scores": {
+      "skill_score": 65,
+      "experience_score": 85,
+      "project_score": 80,
+      "matched_must_have": [
+        ".NET Core",
+        "C#",
+        "Web API",
+        ".NET Core APIs",
+        "Git",
+        "SQL Server",
+        "Authentication and Authorization"
+      ],
+      "missing_must_have": [
+        "Design Patterns",
+        "State Management",
+        "Validation Approaches",
+        "Caching Fundamentals and Implementation",
+        "Web API Security",
+        "Error Handling",
+        "Performance Optimization"
+      ],
+      "matched_good_to_have": [],
+      "missing_good_to_have": [
+        ".NET Framework"
+      ],
+      "reasoning": "The candidate has strong hands-on experience with .NET Core, C#, Web API/REST APIs, SQL Server, Git, and Identity Framework, which directly supports authentication and authorization requirements. However, the resume does not explicitly mention design patterns, caching, validation approaches, state management, performance optimization, or structured error handling. Experience level of 4.75 years fits well within the 3–6 year requirement. Projects demonstrate solid full-stack .NET Core API development but lack evidence of deeper architectural or optimization-focused concerns.",
+      "domain_fit": "adjacent",
+      "seniority_match": "exact",
+      "red_flags": [],
+      "standout_factors": [
+        "Nearly 5 years of consistent .NET Core and C# experience",
+        "Multiple production projects using REST APIs, SQL Server, and Azure",
+        "Hands-on authentication implementation with Identity Framework"
+      ],
+      "hire_recommendation": "maybe",
+      "confidence": "high"
+    },
+    "ragas_passed": true,
+    "ragas_metrics": {}
+  }
+]

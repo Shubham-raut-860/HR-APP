@@ -1,0 +1,96 @@
+# â”€â”€â”€ Web Framework â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+
+# â”€â”€â”€ Database â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+sqlalchemy>=2.0.0
+pgvector>=0.3.6
+asyncpg>=0.29.0           # PostgreSQL async driver (required for prod)
+aiosqlite>=0.20.0         # SQLite async driver (dev / local only)
+alembic>=1.13.0
+psycopg2-binary>=2.9.0    # PostgreSQL sync driver (used by Alembic CLI)
+
+# â”€â”€â”€ Validation & Settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+pydantic>=2.7.0
+pydantic-settings>=2.2.0
+email-validator>=2.1.0.post1
+
+# â”€â”€â”€ Auth & Security â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+python-multipart>=0.0.9
+cryptography>=43.0.0      # Bumped: CVE-2024-26130 affects < 42.0.4
+
+# â”€â”€â”€ AI & LLMs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+openai>=1.14.0
+rendercv[full]>=2.8               # Resume → Professional PDF via LaTeX/TinyTeX
+
+# â”€â”€â”€ Document Parsing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+pdfplumber>=0.11.0
+python-docx>=1.1.0
+docx2txt>=0.8
+Pillow>=10.3.0
+pytesseract>=0.3.13
+pypdfium2>=4.3.0
+
+# â”€â”€â”€ Data & Analytics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+pandas>=2.2.0
+numpy>=1.26.0
+openpyxl>=3.1.0
+reportlab>=4.1.0
+
+# â”€â”€â”€ Rate Limiting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+slowapi>=0.1.9
+
+# â”€â”€â”€ Utilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─── Utilities ────────────────────────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0
+httpx>=0.27.0
+tenacity>=8.3.0
+urllib3>=2.7.0
+gitpython>=3.1.50
+
+# ─── Email ────────────────────────────────────────────────────────────────────────────────────
+aiosmtplib>=3.0.0         # RECOMMENDED: async SMTP — removes asyncio.to_thread
+                          # overhead on every email send. Drop-in for smtplib.
+
+# ─── Experiment Tracking ───────────────────────────────────────────────────────────────────────
+mlflow>=3.1.1             # MLflow tracking — replaces Langfuse (data-breach in old Langfuse versions)
+deepeval>=1.4.0            # LLM evaluation — GEval, HallucinationMetric, AnswerRelevancy, DAGMetric
+ragas==0.4.3               # SECURITY: CVE open, no upstream fix as of 2026-05-12. Monitor for patch.
+diskcache==5.6.3           # SECURITY: CVE open, no upstream fix as of 2026-05-12. Monitor for patch.
+langchain-openai>=0.1.0    # RAGAS Azure OpenAI backend
+langchain-core>=1.3.3
+langgraph>=0.2.0            # Multi-agent workflow orchestration for service agents
+datasets>=2.18.0           # Required by RAGAS evaluate()
+
+# ─── Orchestration (optional — local dev, no S3/cluster needed) ──────────────
+# Toggle with ENABLE_METAFLOW=True in .env. All Metaflow state is written to
+# Backend/flows/.metaflow/ on the local filesystem. Remove block to exclude.
+metaflow>=2.12             # Batch workflow orchestration; local profile in dev
+
+# ─── Production ──────────────────────────────────────────────────────────────────────────────
+gunicorn>=22.0.0           # Production ASGI server wrapper for uvicorn workers
+
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+#  OS-level dependencies (NOT installed by pip â€” must be done separately)
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+#  Tesseract OCR (needed only for scanned/image-based resumes):
+#    Ubuntu/Debian: sudo apt-get install -y tesseract-ocr tesseract-ocr-eng
+#    macOS:         brew install tesseract
+#    Windows:       https://github.com/UB-Mannheim/tesseract/wiki
+#
+#  Note: poppler is NO LONGER required â€” pypdfium2 ships its own PDF renderer.
+
+# Test runner
+pytest>=8.2.0
+
+# HarnessAgent (vendored upstream runtime)
+redis>=5.2.0
+rq>=2.0.0
+apscheduler>=3.10.0
+sse-starlette>=2.1.0
+prometheus-client>=0.21.0
+structlog>=24.4.0
+aiofiles>=24.1.0
+anthropic>=0.40.0

@@ -1,0 +1,19 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env
+.env.local
+.env*
+!.env.example
+src2/
+# QA artifacts
+phase*.json
+*_report*.json
+*.bak
+e2e_artifacts/
+logs/
+stitch_previews/
+testsprite_tests/tmp/

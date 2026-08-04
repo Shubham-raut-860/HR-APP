@@ -1,0 +1,360 @@
+[
+  {
+    "name": "auth_register_hr",
+    "status": 201,
+    "body": {
+      "id": "e9d9dd8d-47bf-40c1-866b-5f51a53e61d7",
+      "email": "[email-redacted]",
+      "full_name": "HR QA",
+      "role": "hr",
+      "is_active": true,
+      "bio": null,
+      "preferences": {},
+      "created_at": "2026-05-05T16:59:17.442727"
+    }
+  },
+  {
+    "name": "auth_register_candidate",
+    "status": 201,
+    "body": {
+      "id": "af09a69b-c59b-4e16-bc60-fa078d028f5c",
+      "email": "[email-redacted]",
+      "full_name": "Cand QA",
+      "role": "candidate",
+      "is_active": true,
+      "bio": null,
+      "preferences": {},
+      "created_at": "2026-05-05T16:59:17.746367"
+    }
+  },
+  {
+    "name": "auth_register_weak_password",
+    "status": 422,
+    "body": {
+      "detail": [
+        {
+          "type": "value_error",
+          "loc": [
+            "body",
+            "password"
+          ],
+          "msg": "Value error, Password must contain at least one uppercase letter",
+          "input": "weakpass",
+          "ctx": {
+            "error": {}
+          }
+        }
+      ],
+      "message": "Validation error"
+    }
+  },
+  {
+    "name": "auth_login_invalid_password",
+    "status": 401,
+    "body": {
+      "detail": "Invalid credentials"
+    }
+  },
+  {
+    "name": "auth_login_hr",
+    "status": 200,
+    "body": {
+      "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJlOWQ5ZGQ4ZC00N2JmLTQwYzEtODY2Yi01ZjUxYTUzZTYxZDciLCJyb2xlIjoiaHIiLCJleHAiOjE3NzgwMDM5NTgsImlhdCI6MTc3ODAwMDM1OCwianRpIjoiZDE1MjBmOTUtZGY0ZS00YTM0LWEzYTgtODVhZmIyZjMxODMyIn0.YDeWsRfBxkGWayZAe5pp9QhjNZe42EpIBRouY99NICk",
+      "token_type": "bearer",
+      "user": {
+        "id": "e9d9dd8d-47bf-40c1-866b-5f51a53e61d7",
+        "email": "[email-redacted]",
+        "full_name": "HR QA",
+        "role": "hr",
+        "is_active": true,
+        "bio": null,
+        "preferences": {},
+        "created_at": "2026-05-05T16:59:17.442727"
+      }
+    }
+  },
+  {
+    "name": "auth_login_candidate",
+    "status": 200,
+    "body": {
+      "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZjA5YTY5Yi1jNTliLTRlMTYtYmM2MC1mYTA3OGQwMjhmNWMiLCJyb2xlIjoiY2FuZGlkYXRlIiwiZXhwIjoxNzc4MDAzOTU4LCJpYXQiOjE3NzgwMDAzNTgsImp0aSI6ImE2ODkwNmFhLTBiMTEtNDQ3MC1hNjYzLWIwMjVmMWE2ODI0MSJ9.Vaiypogd7N0x1Ox-XK_-gKn-ojACnVh04MQFIBJ6t1g",
+      "token_type": "bearer",
+      "user": {
+        "id": "af09a69b-c59b-4e16-bc60-fa078d028f5c",
+        "email": "[email-redacted]",
+        "full_name": "Cand QA",
+        "role": "candidate",
+        "is_active": true,
+        "bio": null,
+        "preferences": {},
+        "created_at": "2026-05-05T16:59:17.746367"
+      }
+    }
+  },
+  {
+    "name": "auth_me_hr",
+    "status": 200,
+    "body": {
+      "id": "e9d9dd8d-47bf-40c1-866b-5f51a53e61d7",
+      "email": "[email-redacted]",
+      "full_name": "HR QA",
+      "role": "hr",
+      "is_active": true,
+      "bio": null,
+      "preferences": {},
+      "created_at": "2026-05-05T16:59:17.442727"
+    }
+  },
+  {
+    "name": "auth_me_unauth",
+    "status": 403,
+    "body": {
+      "detail": "Not authenticated"
+    }
+  },
+  {
+    "name": "jd_create_hr",
+    "status": 201,
+    "body": {
+      "id": "6dbfde4f-e39c-4bb8-b579-700a36e0ab07",
+      "title": "Backend Engineer",
+      "role": "Backend Engineer",
+      "location": "Remote",
+      "employment_type": "Full-time",
+      "experience_min": 2,
+      "experience_max": 5,
+      "must_have_skills": [
+        "python",
+        "fastapi"
+      ],
+      "good_to_have_skills": [
+        "postgresql"
+      ],
+      "description": "Build APIs",
+      "salary_range": null,
+      "education_requirement": "preferred",
+      "resume_weight": 50,
+      "quiz_weight": 50,
+      "pass_threshold": 60,
+      "is_active": true,
+      "created_at": "2026-05-05T16:59:18.600583"
+    }
+  },
+  {
+    "name": "jd_list_hr",
+    "status": 200,
+    "body": [
+      {
+        "id": "6dbfde4f-e39c-4bb8-b579-700a36e0ab07",
+        "title": "Backend Engineer",
+        "role": "Backend Engineer",
+        "location": "Remote",
+        "employment_type": "Full-time",
+        "experience_min": 2,
+        "experience_max": 5,
+        "must_have_skills": [
+          "python",
+          "fastapi"
+        ],
+        "good_to_have_skills": [
+          "postgresql"
+        ],
+        "description": "Build APIs",
+        "salary_range": null,
+        "education_requirement": "preferred",
+        "resume_weight": 50,
+        "quiz_weight": 50,
+        "pass_threshold": 60,
+        "is_active": true,
+        "created_at": "2026-05-05T16:59:18.600583"
+      }
+    ]
+  },
+  {
+    "name": "jd_create_unauth",
+    "status": 403,
+    "body": {
+      "detail": "Not authenticated"
+    }
+  },
+  {
+    "name": "candidate_public_jobs",
+    "status": 200,
+    "body": [
+      {
+        "id": "6dbfde4f-e39c-4bb8-b579-700a36e0ab07",
+        "title": "Backend Engineer",
+        "role": "Backend Engineer",
+        "location": "Remote",
+        "employment_type": "Full-time",
+        "experience_min": 2,
+        "experience_max": 5,
+        "must_have_skills": [
+          "python",
+          "fastapi"
+        ],
+        "good_to_have_skills": [
+          "postgresql"
+        ],
+        "description": "Build APIs",
+        "salary_range": null,
+        "created_at": "2026-05-05T16:59:18.600583",
+        "company": "HR QA",
+        "company_bio": "We are an innovative company actively looking for top talent. Apply to our open roles to learn more about our mission and culture!",
+        "company_blog": ""
+      }
+    ]
+  },
+  {
+    "name": "candidate_public_job_detail",
+    "status": 200,
+    "body": {
+      "id": "6dbfde4f-e39c-4bb8-b579-700a36e0ab07",
+      "title": "Backend Engineer",
+      "role": "Backend Engineer",
+      "location": "Remote",
+      "employment_type": "Full-time",
+      "experience_min": 2,
+      "experience_max": 5,
+      "must_have_skills": [
+        "python",
+        "fastapi"
+      ],
+      "good_to_have_skills": [
+        "postgresql"
+      ],
+      "description": "Build APIs",
+      "salary_range": null,
+      "created_at": "2026-05-05T16:59:18.600583",
+      "company": "HR QA",
+      "company_bio": "We are an innovative company actively looking for top talent. Apply to our open roles to learn more about our mission and culture!",
+      "company_blog": ""
+    }
+  },
+  {
+    "name": "candidate_my_applications",
+    "status": 200,
+    "body": []
+  },
+  {
+    "name": "candidate_my_results",
+    "status": 200,
+    "body": []
+  },
+  {
+    "name": "quiz_generate_hr",
+    "status": 201,
+    "body": {
+      "id": "cb6db23b-8d05-42e8-8c8c-3e93dd4d6f1d",
+      "job_id": "6dbfde4f-e39c-4bb8-b579-700a36e0ab07",
+      "title": "QA Quiz",
+      "duration_minutes": 30,
+      "is_active": true,
+      "question_count": 20,
+      "created_at": "2026-05-05T16:59:18.654298"
+    }
+  },
+  {
+    "name": "quiz_list_hr",
+    "status": 200,
+    "body": [
+      {
+        "id": "cb6db23b-8d05-42e8-8c8c-3e93dd4d6f1d",
+        "job_id": "6dbfde4f-e39c-4bb8-b579-700a36e0ab07",
+        "title": "QA Quiz",
+        "duration_minutes": 30,
+        "is_active": true,
+        "question_count": 20,
+        "created_at": "2026-05-05T16:59:18.654298"
+      }
+    ]
+  },
+  {
+    "name": "quiz_list_unauth",
+    "status": 403,
+    "body": {
+      "detail": "Not authenticated"
+    }
+  },
+  {
+    "name": "analytics_summary_hr",
+    "status": 200,
+    "body": {
+      "total_applicants": 0,
+      "shortlisted_count": 0,
+      "shortlisted_pct": 0.0,
+      "strong_count": 0,
+      "medium_count": 0,
+      "reject_count": 0,
+      "quiz_taken_count": 0,
+      "ranked_count": 0,
+      "avg_resume_score": 0.0,
+      "avg_quiz_score": null,
+      "avg_final_score": null,
+      "pass_count": 0,
+      "fail_count": 0
+    }
+  },
+  {
+    "name": "analytics_rankings_hr",
+    "status": 200,
+    "body": []
+  },
+  {
+    "name": "analytics_untagged_hr",
+    "status": 200,
+    "body": {
+      "untagged_count": 0
+    }
+  },
+  {
+    "name": "notifications_get_hr",
+    "status": 200,
+    "body": {
+      "notifications": [],
+      "unread_count": 0,
+      "is_snoozed": false,
+      "snooze_until": null,
+      "blocked_types": []
+    }
+  },
+  {
+    "name": "notifications_clear_hr",
+    "status": 200,
+    "body": {
+      "message": "Cleared"
+    }
+  },
+  {
+    "name": "resumes_upload_empty",
+    "status": 422,
+    "body": {
+      "detail": [
+        {
+          "type": "missing",
+          "loc": [
+            "body",
+            "job_id"
+          ],
+          "msg": "Field required",
+          "input": null
+        }
+      ],
+      "message": "Validation error"
+    }
+  },
+  {
+    "name": "agent_score_resume_empty_file",
+    "status": 400,
+    "body": {
+      "detail": "Uploaded file is empty"
+    }
+  },
+  {
+    "name": "agent_score_resume_blank_jd",
+    "status": 400,
+    "body": {
+      "detail": "job_description is required"
+    }
+  }
+]

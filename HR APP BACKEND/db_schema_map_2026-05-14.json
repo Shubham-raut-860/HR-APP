@@ -1,0 +1,1583 @@
+{
+  "users": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "VARCHAR(36)",
+        "nullable": false,
+        "primary_key": true,
+        "default": "<function gen_uuid at 0x000001A7C8C4EAC0>",
+        "server_default": null
+      },
+      {
+        "name": "email",
+        "type": "VARCHAR(255)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "hashed_password",
+        "type": "VARCHAR(255)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "full_name",
+        "type": "VARCHAR(255)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "role",
+        "type": "VARCHAR(9)",
+        "nullable": false,
+        "primary_key": false,
+        "default": "UserRole.hr",
+        "server_default": null
+      },
+      {
+        "name": "is_active",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "primary_key": false,
+        "default": "True",
+        "server_default": null
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function _utcnow at 0x000001A7C8C4E020>",
+        "server_default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function _utcnow at 0x000001A7C8C4F100>",
+        "server_default": null
+      },
+      {
+        "name": "bio",
+        "type": "TEXT",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "preferences",
+        "type": "JSON",
+        "nullable": true,
+        "primary_key": false,
+        "default": "<function dict at 0x000001A7C8C4F420>",
+        "server_default": null
+      },
+      {
+        "name": "token_revoked_before",
+        "type": "DATETIME",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_users_email",
+        "columns": [
+          "email"
+        ],
+        "unique": true
+      }
+    ],
+    "foreign_keys": [],
+    "unique_constraints": []
+  },
+  "notifications": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "VARCHAR(36)",
+        "nullable": false,
+        "primary_key": true,
+        "default": "<function gen_uuid at 0x000001A7C8C71F80>",
+        "server_default": null
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(36)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "title",
+        "type": "VARCHAR(255)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "message",
+        "type": "TEXT",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "type",
+        "type": "VARCHAR(11)",
+        "nullable": false,
+        "primary_key": false,
+        "default": "NotificationType.system",
+        "server_default": null
+      },
+      {
+        "name": "is_read",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "primary_key": false,
+        "default": "False",
+        "server_default": null
+      },
+      {
+        "name": "is_dismissed",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "primary_key": false,
+        "default": "False",
+        "server_default": null
+      },
+      {
+        "name": "related_id",
+        "type": "VARCHAR(36)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function _utcnow at 0x000001A7C8C725C0>",
+        "server_default": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_notifications_user_id",
+        "columns": [
+          "user_id"
+        ],
+        "unique": false
+      }
+    ],
+    "foreign_keys": [
+      {
+        "column": "user_id",
+        "target": "users.id",
+        "ondelete": "CASCADE"
+      }
+    ],
+    "unique_constraints": []
+  },
+  "job_descriptions": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "VARCHAR(36)",
+        "nullable": false,
+        "primary_key": true,
+        "default": "<function gen_uuid at 0x000001A7C8C739C0>",
+        "server_default": null
+      },
+      {
+        "name": "title",
+        "type": "VARCHAR(255)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "role",
+        "type": "VARCHAR(255)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "location",
+        "type": "VARCHAR(255)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "experience_min",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": false,
+        "default": "0",
+        "server_default": null
+      },
+      {
+        "name": "experience_max",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": false,
+        "default": "10",
+        "server_default": null
+      },
+      {
+        "name": "must_have_skills",
+        "type": "JSON",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function list at 0x000001A7C8C73C40>",
+        "server_default": null
+      },
+      {
+        "name": "good_to_have_skills",
+        "type": "JSON",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function list at 0x000001A7C8C73EC0>",
+        "server_default": null
+      },
+      {
+        "name": "employment_type",
+        "type": "VARCHAR(50)",
+        "nullable": true,
+        "primary_key": false,
+        "default": "Full-time",
+        "server_default": null
+      },
+      {
+        "name": "description",
+        "type": "TEXT",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "raw_text",
+        "type": "TEXT",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "embedding",
+        "type": "JSON",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "resume_weight",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": false,
+        "default": "50",
+        "server_default": null
+      },
+      {
+        "name": "quiz_weight",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": false,
+        "default": "50",
+        "server_default": null
+      },
+      {
+        "name": "pass_threshold",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": false,
+        "default": "60",
+        "server_default": null
+      },
+      {
+        "name": "salary_range",
+        "type": "VARCHAR(100)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "education_requirement",
+        "type": "VARCHAR(20)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "file_hash",
+        "type": "VARCHAR(64)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "is_active",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "primary_key": false,
+        "default": "True",
+        "server_default": null
+      },
+      {
+        "name": "created_by",
+        "type": "VARCHAR(36)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function _utcnow at 0x000001A7C8CA4360>",
+        "server_default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function _utcnow at 0x000001A7C8CA44A0>",
+        "server_default": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_job_descriptions_file_hash",
+        "columns": [
+          "file_hash"
+        ],
+        "unique": false
+      }
+    ],
+    "foreign_keys": [
+      {
+        "column": "created_by",
+        "target": "users.id",
+        "ondelete": "SET NULL"
+      }
+    ],
+    "unique_constraints": []
+  },
+  "candidates": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "VARCHAR(36)",
+        "nullable": false,
+        "primary_key": true,
+        "default": "<function gen_uuid at 0x000001A7C8CA60C0>",
+        "server_default": null
+      },
+      {
+        "name": "job_id",
+        "type": "VARCHAR(36)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(36)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "name",
+        "type": "VARCHAR(255)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "email",
+        "type": "VARCHAR(255)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "phone",
+        "type": "VARCHAR(50)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "location",
+        "type": "VARCHAR(255)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "skills",
+        "type": "JSON",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function list at 0x000001A7C8E10AE0>",
+        "server_default": null
+      },
+      {
+        "name": "normalized_skills",
+        "type": "JSON",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function list at 0x000001A7C87851C0>",
+        "server_default": null
+      },
+      {
+        "name": "experience_years",
+        "type": "FLOAT",
+        "nullable": false,
+        "primary_key": false,
+        "default": "0.0",
+        "server_default": null
+      },
+      {
+        "name": "education",
+        "type": "JSON",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function list at 0x000001A7C8E10FE0>",
+        "server_default": null
+      },
+      {
+        "name": "projects",
+        "type": "JSON",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function list at 0x000001A7C8E11260>",
+        "server_default": null
+      },
+      {
+        "name": "work_experience",
+        "type": "JSON",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "skill_years",
+        "type": "JSON",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "raw_resume_text",
+        "type": "TEXT",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "resume_path",
+        "type": "VARCHAR(512)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "file_hash",
+        "type": "VARCHAR(64)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "is_archived",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "primary_key": false,
+        "default": "False",
+        "server_default": null
+      },
+      {
+        "name": "embedding",
+        "type": "JSON",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "skill_match_pct",
+        "type": "FLOAT",
+        "nullable": false,
+        "primary_key": false,
+        "default": "0.0",
+        "server_default": null
+      },
+      {
+        "name": "experience_match_pct",
+        "type": "FLOAT",
+        "nullable": false,
+        "primary_key": false,
+        "default": "0.0",
+        "server_default": null
+      },
+      {
+        "name": "project_relevance_pct",
+        "type": "FLOAT",
+        "nullable": false,
+        "primary_key": false,
+        "default": "0.0",
+        "server_default": null
+      },
+      {
+        "name": "education_match_pct",
+        "type": "FLOAT",
+        "nullable": false,
+        "primary_key": false,
+        "default": "0.0",
+        "server_default": null
+      },
+      {
+        "name": "vector_similarity",
+        "type": "FLOAT",
+        "nullable": false,
+        "primary_key": false,
+        "default": "0.0",
+        "server_default": null
+      },
+      {
+        "name": "resume_score",
+        "type": "FLOAT",
+        "nullable": false,
+        "primary_key": false,
+        "default": "0.0",
+        "server_default": null
+      },
+      {
+        "name": "location_match_pct",
+        "type": "FLOAT",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "score_breakdown",
+        "type": "JSON",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "career_breaks",
+        "type": "JSON",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "tag",
+        "type": "VARCHAR(6)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "quiz_score",
+        "type": "FLOAT",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "quiz_max",
+        "type": "FLOAT",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "quiz_pct",
+        "type": "FLOAT",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "final_score",
+        "type": "FLOAT",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "rank",
+        "type": "INTEGER",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "passed",
+        "type": "BOOLEAN",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function _utcnow at 0x000001A7C8E11C60>",
+        "server_default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function _utcnow at 0x000001A7C8E120C0>",
+        "server_default": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_candidates_email",
+        "columns": [
+          "email"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_candidates_created_at",
+        "columns": [
+          "created_at"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_candidates_file_hash",
+        "columns": [
+          "file_hash"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_candidates_user_id",
+        "columns": [
+          "user_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_candidates_job_id",
+        "columns": [
+          "job_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_candidate_email_job",
+        "columns": [
+          "email",
+          "job_id"
+        ],
+        "unique": true
+      }
+    ],
+    "foreign_keys": [
+      {
+        "column": "user_id",
+        "target": "users.id",
+        "ondelete": "SET NULL"
+      },
+      {
+        "column": "job_id",
+        "target": "job_descriptions.id",
+        "ondelete": "SET NULL"
+      }
+    ],
+    "unique_constraints": [
+      {
+        "name": "uq_application_user_job",
+        "columns": [
+          "user_id",
+          "job_id"
+        ]
+      }
+    ]
+  },
+  "quizzes": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "VARCHAR(36)",
+        "nullable": false,
+        "primary_key": true,
+        "default": "<function gen_uuid at 0x000001A7C8E44D60>",
+        "server_default": null
+      },
+      {
+        "name": "job_id",
+        "type": "VARCHAR(36)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "title",
+        "type": "VARCHAR(255)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "duration_minutes",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": false,
+        "default": "30",
+        "server_default": null
+      },
+      {
+        "name": "is_active",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "primary_key": false,
+        "default": "True",
+        "server_default": null
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function _utcnow at 0x000001A7C8E45080>",
+        "server_default": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_quizzes_job_id",
+        "columns": [
+          "job_id"
+        ],
+        "unique": false
+      }
+    ],
+    "foreign_keys": [
+      {
+        "column": "job_id",
+        "target": "job_descriptions.id",
+        "ondelete": "SET NULL"
+      }
+    ],
+    "unique_constraints": []
+  },
+  "questions": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "VARCHAR(36)",
+        "nullable": false,
+        "primary_key": true,
+        "default": "<function gen_uuid at 0x000001A7C8E460C0>",
+        "server_default": null
+      },
+      {
+        "name": "quiz_id",
+        "type": "VARCHAR(36)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "question_text",
+        "type": "TEXT",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "options",
+        "type": "JSON",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "correct_answer",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "difficulty",
+        "type": "VARCHAR(6)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "skill_tag",
+        "type": "VARCHAR(100)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "weight",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": false,
+        "default": "1",
+        "server_default": null
+      },
+      {
+        "name": "order",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": false,
+        "default": "0",
+        "server_default": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_questions_quiz_id",
+        "columns": [
+          "quiz_id"
+        ],
+        "unique": false
+      }
+    ],
+    "foreign_keys": [
+      {
+        "column": "quiz_id",
+        "target": "quizzes.id",
+        "ondelete": null
+      }
+    ],
+    "unique_constraints": []
+  },
+  "quiz_attempts": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "VARCHAR(36)",
+        "nullable": false,
+        "primary_key": true,
+        "default": "<function gen_uuid at 0x000001A7C8E47880>",
+        "server_default": null
+      },
+      {
+        "name": "quiz_id",
+        "type": "VARCHAR(36)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "candidate_id",
+        "type": "VARCHAR(36)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "token_hash",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "status",
+        "type": "VARCHAR(11)",
+        "nullable": false,
+        "primary_key": false,
+        "default": "QuizStatus.pending",
+        "server_default": null
+      },
+      {
+        "name": "started_at",
+        "type": "DATETIME",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "submitted_at",
+        "type": "DATETIME",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "answers",
+        "type": "JSON",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function dict at 0x000001A7C8E60040>",
+        "server_default": null
+      },
+      {
+        "name": "raw_score",
+        "type": "FLOAT",
+        "nullable": false,
+        "primary_key": false,
+        "default": "0.0",
+        "server_default": null
+      },
+      {
+        "name": "max_score",
+        "type": "FLOAT",
+        "nullable": false,
+        "primary_key": false,
+        "default": "0.0",
+        "server_default": null
+      },
+      {
+        "name": "skill_breakdown",
+        "type": "JSON",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function dict at 0x000001A7C8E602C0>",
+        "server_default": null
+      },
+      {
+        "name": "difficulty_breakdown",
+        "type": "JSON",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function dict at 0x000001A7C8E60540>",
+        "server_default": null
+      },
+      {
+        "name": "tab_switches",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": false,
+        "default": "0",
+        "server_default": null
+      },
+      {
+        "name": "question_order",
+        "type": "JSON",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function list at 0x000001A7C8E607C0>",
+        "server_default": null
+      },
+      {
+        "name": "token_expires_at",
+        "type": "DATETIME",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function _utcnow at 0x000001A7C8E60860>",
+        "server_default": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_quiz_attempts_token_hash",
+        "columns": [
+          "token_hash"
+        ],
+        "unique": true
+      },
+      {
+        "name": "ix_quiz_attempts_candidate_id",
+        "columns": [
+          "candidate_id"
+        ],
+        "unique": false
+      }
+    ],
+    "foreign_keys": [
+      {
+        "column": "quiz_id",
+        "target": "quizzes.id",
+        "ondelete": null
+      },
+      {
+        "column": "candidate_id",
+        "target": "candidates.id",
+        "ondelete": null
+      }
+    ],
+    "unique_constraints": []
+  },
+  "stored_resumes": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "VARCHAR(36)",
+        "nullable": false,
+        "primary_key": true,
+        "default": "<function gen_uuid at 0x000001A7C8E62520>",
+        "server_default": null
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(36)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "label",
+        "type": "VARCHAR(255)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "original_filename",
+        "type": "VARCHAR(512)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "resume_path",
+        "type": "VARCHAR(512)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "file_hash",
+        "type": "VARCHAR(64)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "file_size_kb",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": false,
+        "default": "0",
+        "server_default": null
+      },
+      {
+        "name": "is_default",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "primary_key": false,
+        "default": "False",
+        "server_default": null
+      },
+      {
+        "name": "uploaded_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function _utcnow at 0x000001A7C8E62840>",
+        "server_default": null
+      },
+      {
+        "name": "parsed_name",
+        "type": "VARCHAR(255)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "parsed_email",
+        "type": "VARCHAR(255)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "parsed_phone",
+        "type": "VARCHAR(50)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "parsed_location",
+        "type": "VARCHAR(255)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "skills",
+        "type": "JSON",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "normalized_skills",
+        "type": "JSON",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "experience_years",
+        "type": "FLOAT",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "education",
+        "type": "JSON",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "projects",
+        "type": "JSON",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "work_experience",
+        "type": "JSON",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "skill_years",
+        "type": "JSON",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "career_breaks",
+        "type": "JSON",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "embedding",
+        "type": "JSON",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "summary",
+        "type": "TEXT",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "parse_version",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": false,
+        "default": "1",
+        "server_default": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_stored_resumes_user_id",
+        "columns": [
+          "user_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_stored_resumes_file_hash",
+        "columns": [
+          "file_hash"
+        ],
+        "unique": false
+      }
+    ],
+    "foreign_keys": [
+      {
+        "column": "user_id",
+        "target": "users.id",
+        "ondelete": "CASCADE"
+      }
+    ],
+    "unique_constraints": []
+  },
+  "audit_logs": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "VARCHAR(36)",
+        "nullable": false,
+        "primary_key": true,
+        "default": "<function gen_uuid at 0x000001A7C8E80FE0>",
+        "server_default": null
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(36)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "action",
+        "type": "VARCHAR(100)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "resource",
+        "type": "VARCHAR(100)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "resource_id",
+        "type": "VARCHAR(36)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "details",
+        "type": "JSON",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "ip_address",
+        "type": "VARCHAR(50)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function _utcnow at 0x000001A7C8E813A0>",
+        "server_default": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_audit_logs_created_at",
+        "columns": [
+          "created_at"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_audit_logs_user_id",
+        "columns": [
+          "user_id"
+        ],
+        "unique": false
+      }
+    ],
+    "foreign_keys": [
+      {
+        "column": "user_id",
+        "target": "users.id",
+        "ondelete": "SET NULL"
+      }
+    ],
+    "unique_constraints": []
+  },
+  "refresh_tokens": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "VARCHAR(36)",
+        "nullable": false,
+        "primary_key": true,
+        "default": "<function gen_uuid at 0x000001A7C8E82340>",
+        "server_default": null
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(36)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "token_hash",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "expires_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "revoked_at",
+        "type": "DATETIME",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "replaced_by_token_hash",
+        "type": "VARCHAR(64)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function _utcnow at 0x000001A7C8E823E0>",
+        "server_default": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_refresh_tokens_revoked_at",
+        "columns": [
+          "revoked_at"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_refresh_tokens_user_id",
+        "columns": [
+          "user_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_refresh_tokens_created_at",
+        "columns": [
+          "created_at"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_refresh_tokens_token_hash",
+        "columns": [
+          "token_hash"
+        ],
+        "unique": true
+      },
+      {
+        "name": "ix_refresh_tokens_expires_at",
+        "columns": [
+          "expires_at"
+        ],
+        "unique": false
+      }
+    ],
+    "foreign_keys": [
+      {
+        "column": "user_id",
+        "target": "users.id",
+        "ondelete": "CASCADE"
+      }
+    ],
+    "unique_constraints": []
+  },
+  "revoked_tokens": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "VARCHAR(36)",
+        "nullable": false,
+        "primary_key": true,
+        "default": "<function gen_uuid at 0x000001A7C8E83600>",
+        "server_default": null
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(36)",
+        "nullable": true,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "jti",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "expires_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false,
+        "default": null,
+        "server_default": null
+      },
+      {
+        "name": "revoked_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false,
+        "default": "<function _utcnow at 0x000001A7C8E836A0>",
+        "server_default": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_revoked_tokens_expires_at",
+        "columns": [
+          "expires_at"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_revoked_tokens_revoked_at",
+        "columns": [
+          "revoked_at"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_revoked_tokens_jti",
+        "columns": [
+          "jti"
+        ],
+        "unique": true
+      },
+      {
+        "name": "ix_revoked_tokens_user_id",
+        "columns": [
+          "user_id"
+        ],
+        "unique": false
+      }
+    ],
+    "foreign_keys": [
+      {
+        "column": "user_id",
+        "target": "users.id",
+        "ondelete": "SET NULL"
+      }
+    ],
+    "unique_constraints": []
+  }
+}

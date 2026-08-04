@@ -1,0 +1,3840 @@
+{
+  "startedAt": "2026-06-10T15:22:56.911Z",
+  "api": [
+    {
+      "at": "2026-06-10T15:23:00.858Z",
+      "method": "POST",
+      "path": "/auth/register",
+      "status": 201,
+      "ok": true,
+      "response": {
+        "id": "4edaa99e-7c41-4b12-8b2e-2d87f635871e",
+        "email": "[email-redacted]",
+        "full_name": "hr Assessment Fix",
+        "role": "hr",
+        "is_active": true,
+        "bio": null,
+        "preferences": {},
+        "created_at": "2026-06-10T15:23:00.845270"
+      }
+    },
+    {
+      "at": "2026-06-10T15:23:01.063Z",
+      "method": "POST",
+      "path": "/auth/login",
+      "status": 200,
+      "ok": true,
+      "response": {
+        "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0ZWRhYTk5ZS03YzQxLTRiMTItOGIyZS0yZDg3ZjYzNTg3MWUiLCJyb2xlIjoiaHIiLCJleHAiOjE3ODExMDg1ODEsImlhdCI6MTc4MTEwNDk4MSwianRpIjoiNGExMDE2NmMtZDhlNi00ODhlLTk0ZmEtZjg0MDUzY2UwZWNlIiwidHlwZSI6ImFjY2VzcyJ9.kx2AwMFb0pvByKC9rqv94aPmeOm7_IFrz84w0_wxUnc",
+        "refresh_token": "rGEjK8f3fqgmUI0APm_Vdc_T4m6LRmlwi29ZWwIaLkUtuZGiQVlKax_sEHXt5vyu",
+        "token_type": "bearer",
+        "user": {
+          "id": "4edaa99e-7c41-4b12-8b2e-2d87f635871e",
+          "email": "[email-redacted]",
+          "full_name": "hr Assessment Fix",
+          "role": "hr",
+          "is_active": true,
+          "bio": null,
+          "preferences": {},
+          "created_at": "2026-06-10T15:23:00.845270"
+        }
+      }
+    },
+    {
+      "at": "2026-06-10T15:23:01.261Z",
+      "method": "POST",
+      "path": "/auth/register",
+      "status": 201,
+      "ok": true,
+      "response": {
+        "id": "c3ad5683-0cb9-47a4-bd47-3dbe239a4db5",
+        "email": "[email-redacted]",
+        "full_name": "candidate Assessment Fix",
+        "role": "candidate",
+        "is_active": true,
+        "bio": null,
+        "preferences": {},
+        "created_at": "2026-06-10T15:23:01.262326"
+      }
+    },
+    {
+      "at": "2026-06-10T15:23:01.504Z",
+      "method": "POST",
+      "path": "/auth/login",
+      "status": 200,
+      "ok": true,
+      "response": {
+        "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjM2FkNTY4My0wY2I5LTQ3YTQtYmQ0Ny0zZGJlMjM5YTRkYjUiLCJyb2xlIjoiY2FuZGlkYXRlIiwiZXhwIjoxNzgxMTA4NTgxLCJpYXQiOjE3ODExMDQ5ODEsImp0aSI6IjljNDVkMTM2LTVmY2ItNGE1My04OTllLTZhNWViOGQxZDU1ZiIsInR5cGUiOiJhY2Nlc3MifQ.WnG5i-iLu1Ck74aiz2bg5xOKP_a9Z2dkCYOJ9jey9cM",
+        "refresh_token": "14tCfWArQvuwyBJhTCoWDP1omEj-iF0GvVc01wwsNneHj4I4Cv8miuIKE-os9iwa",
+        "token_type": "bearer",
+        "user": {
+          "id": "c3ad5683-0cb9-47a4-bd47-3dbe239a4db5",
+          "email": "[email-redacted]",
+          "full_name": "candidate Assessment Fix",
+          "role": "candidate",
+          "is_active": true,
+          "bio": null,
+          "preferences": {},
+          "created_at": "2026-06-10T15:23:01.262326"
+        }
+      }
+    },
+    {
+      "at": "2026-06-10T15:23:01.553Z",
+      "method": "POST",
+      "path": "/jd/",
+      "status": 201,
+      "ok": true,
+      "response": {
+        "id": "7e68ff3f-a9e2-4514-8541-43ab981d734f",
+        "title": "Assessment Fix Role 1781104980638",
+        "role": "QA Automation Engineer",
+        "location": "Remote",
+        "employment_type": "Full-time",
+        "experience_min": 1,
+        "experience_max": 5,
+        "must_have_skills": [
+          "Playwright",
+          "React",
+          "FastAPI",
+          "QA"
+        ],
+        "good_to_have_skills": [
+          "SQL",
+          "Accessibility"
+        ],
+        "description": "Assessment workflow validation job with enough real description for scoring and quiz generation.",
+        "salary_range": null,
+        "education_requirement": null,
+        "resume_weight": 50,
+        "quiz_weight": 50,
+        "pass_threshold": 60,
+        "is_active": true,
+        "created_at": "2026-06-10T15:23:01.542257"
+      }
+    },
+    {
+      "at": "2026-06-10T15:23:14.083Z",
+      "method": "POST",
+      "path": "/quiz/generate",
+      "status": 201,
+      "ok": true,
+      "response": {
+        "id": "73204575-e280-4fde-b036-2e37520fd693",
+        "job_id": "7e68ff3f-a9e2-4514-8541-43ab981d734f",
+        "title": "Assessment Fix Role 1781104980638 - Assessment",
+        "duration_minutes": 30,
+        "is_active": true,
+        "question_count": 20,
+        "created_at": "2026-06-10T15:23:14.073797"
+      }
+    },
+    {
+      "at": "2026-06-10T15:23:14.710Z",
+      "method": "POST",
+      "path": "/candidate/apply/7e68ff3f-a9e2-4514-8541-43ab981d734f",
+      "status": 201,
+      "ok": true,
+      "response": {
+        "candidate_tier": "senior",
+        "experience_years": 5,
+        "id": "34a9fe88-a54d-4018-9db5-1196555d8a66",
+        "job_id": "7e68ff3f-a9e2-4514-8541-43ab981d734f",
+        "user_id": "c3ad5683-0cb9-47a4-bd47-3dbe239a4db5",
+        "name": "Candidate: Browser Test User",
+        "email": "[email-redacted]",
+        "phone": null,
+        "location": "Automation",
+        "skills": [
+          "accessibility",
+          "playwright",
+          "typescript",
+          "fastapi",
+          "python",
+          "react",
+          "azure",
+          "sql",
+          "qa"
+        ],
+        "normalized_skills": [
+          "accessibility",
+          "azure",
+          "fastapi",
+          "playwright",
+          "python",
+          "qa",
+          "react",
+          "sql",
+          "typescript"
+        ],
+        "education": [],
+        "projects": [],
+        "work_experience": [],
+        "skill_years": {
+          "accessibility": 5,
+          "azure": 5,
+          "fastapi": 5,
+          "playwright": 5,
+          "python": 5,
+          "qa": 5,
+          "react": 5,
+          "sql": 5,
+          "typescript": 5
+        },
+        "skill_match_pct": 100,
+        "experience_match_pct": 100,
+        "project_relevance_pct": 40,
+        "education_match_pct": 60.5,
+        "location_match_pct": 100,
+        "vector_similarity": 0,
+        "resume_score": 58.44,
+        "score_breakdown": {
+          "ai_score_used": false,
+          "ai_skill_score": null,
+          "ai_experience_score": null,
+          "ai_project_score": null,
+          "matched_must_have": [],
+          "missing_must_have": [],
+          "matched_good_to_have": [],
+          "missing_good_to_have": [],
+          "reasoning": "",
+          "domain_fit": "exact",
+          "seniority_match": "exact",
+          "hire_recommendation": "maybe",
+          "red_flags": [],
+          "standout_factors": [],
+          "confidence": "medium",
+          "rule_based": {
+            "skill_pct": 100,
+            "exp_pct": 100,
+            "proj_pct": 40
+          },
+          "candidate_tier": "senior",
+          "from_cache": false,
+          "fast_mode": true,
+          "degraded_mode": false,
+          "ocr_truncated": false,
+          "phase_b_calibration": {
+            "role_track": "backend",
+            "jd_signal_strength": 0.4732,
+            "bias_points": -2.5,
+            "base_weights": {
+              "skill": 0.3525,
+              "experience": 0.2522,
+              "project": 0.1603,
+              "education": 0.0722,
+              "location": 0.0441,
+              "vector": 0.1187
+            },
+            "calibrated_weights": {
+              "skill": 0.3714,
+              "experience": 0.2664,
+              "project": 0.1698,
+              "education": 0.058,
+              "location": 0.0299,
+              "vector": 0.1046
+            }
+          },
+          "phase_c_applied": true,
+          "jd_hash": "8072c21792bf5252"
+        },
+        "career_breaks": [],
+        "tag": "Medium",
+        "quiz_score": null,
+        "quiz_max": null,
+        "quiz_pct": null,
+        "final_score": 58.44,
+        "rank": null,
+        "passed": null,
+        "created_at": "2026-06-10T15:23:14.465878"
+      }
+    },
+    {
+      "at": "2026-06-10T15:23:14.732Z",
+      "method": "POST",
+      "path": "/quiz/send-links",
+      "status": 200,
+      "ok": true,
+      "response": {
+        "message": "Quiz links queued for dispatch to 1 candidates",
+        "links": [
+          {
+            "name": "Candidate: Browser Test User",
+            "email": "[email-redacted]",
+            "link": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+            "state": "rotated"
+          }
+        ],
+        "created_count": 0,
+        "rotated_count": 1,
+        "skipped": []
+      }
+    },
+    {
+      "at": "2026-06-10T15:23:14.752Z",
+      "method": "GET",
+      "path": "/quiz/magic-link/context",
+      "status": 400,
+      "ok": false,
+      "response": {
+        "detail": "Quiz token is required"
+      }
+    },
+    {
+      "at": "2026-06-10T15:23:14.763Z",
+      "method": "GET",
+      "path": "/candidate/quiz",
+      "status": 200,
+      "ok": true,
+      "response": {
+        "pending": true,
+        "attempts": [
+          {
+            "attempt_id": "90402d27-c642-4e03-b003-02dee6e425d6",
+            "quiz_id": "73204575-e280-4fde-b036-2e37520fd693",
+            "quiz_title": "Assessment Fix Role 1781104980638 - Assessment",
+            "duration_minutes": 30,
+            "status": "pending",
+            "token": null,
+            "started_at": null
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-06-10T15:23:14.772Z",
+      "method": "GET",
+      "path": "/candidate/quiz",
+      "status": 200,
+      "ok": true,
+      "response": {
+        "pending": true,
+        "attempts": [
+          {
+            "attempt_id": "90402d27-c642-4e03-b003-02dee6e425d6",
+            "quiz_id": "73204575-e280-4fde-b036-2e37520fd693",
+            "quiz_title": "Assessment Fix Role 1781104980638 - Assessment",
+            "duration_minutes": 30,
+            "status": "pending",
+            "token": null,
+            "started_at": null
+          }
+        ]
+      }
+    }
+  ],
+  "browser": [
+    {
+      "at": "2026-06-10T15:22:59.854Z",
+      "step": "vite stdout",
+      "text": "\n> react-example@0.0.0 dev\n> vite --port=3000 --host=0.0.0.0 --host 127.0.0.1 --port 3000\n\n"
+    },
+    {
+      "at": "2026-06-10T15:23:00.292Z",
+      "step": "vite stdout",
+      "text": "\n  \u001b[32m\u001b[1mVITE\u001b[22m v6.4.2\u001b[39m  \u001b[2mready in \u001b[0m\u001b[1m369\u001b[22m\u001b[2m\u001b[0m ms\u001b[22m\n\n"
+    },
+    {
+      "at": "2026-06-10T15:23:00.293Z",
+      "step": "vite stdout",
+      "text": "  \u001b[32m➜\u001b[39m  \u001b[1mLocal\u001b[22m:   \u001b[36mhttp://127.0.0.1:\u001b[1m3000\u001b[22m/\u001b[39m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:02.558Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:02 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:14.086Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:14 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:14.711Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:14 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:14.765Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:14 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:15.796Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:15 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:15.854Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:15 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:16.043Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:16 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:16.095Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:16 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:16.238Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:16 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:16.443Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:16 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:16.632Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:16 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:16.693Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:16 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:16.854Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:16 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:16.911Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:16 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:17.100Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:17 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:17.266Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:17 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:17.315Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:17 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:17.468Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:17 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:17.652Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:17 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:17.717Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:17 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    },
+    {
+      "at": "2026-06-10T15:23:17.884Z",
+      "step": "assessment screen before answering",
+      "url": "http://127.0.0.1:3000/take-quiz",
+      "body": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.946Z",
+      "step": "vite stdout",
+      "text": "\u001b[2m8:53:17 pm\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m\u001b[2m(client)\u001b[22m\u001b[39m \u001b[32mpage reload \u001b[39m\u001b[2massessment-link-fix-2026-06-10T15-22-56-909Z/assessment-link-fix-report.json\u001b[22m\n"
+    }
+  ],
+  "network": [
+    {
+      "at": "2026-06-10T15:23:15.095Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "pageUrl": "about:blank",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.799Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/main.tsx?t=1781104994773",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.807Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/@react-refresh",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.808Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.810Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.818Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/App.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.821Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-T3S7KZ2J.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.823Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-UN725CXD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.832Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react-dom_client.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.842Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/@vite/client",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.845Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/context/ThemeContext.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.847Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/context/AuthContext.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.847Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/components/ui/sonner.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.853Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react-router-dom.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.855Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/components/GlobalCommandPalette.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.857Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/components/layout/DashboardLayout.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.859Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/components/layout/CandidateLayout.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.859Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/components/ui/alert-dialog.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.861Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/services/tokenStore.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:15.885Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/lucide-react.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.031Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/lib/technicalAdmin.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.033Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-ZNCNKMXC.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.034Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/services/auth.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.035Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/vite/dist/client/env.mjs",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.047Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/sonner.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.048Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/components/ui/input.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.049Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/components/ui/dialog.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.050Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/components/ui/badge.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.052Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/lib/utils.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.056Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/components/ui/button.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.059Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/components/NotificationBell.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.059Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/services/analytics.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.061Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-alert-dialog.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.064Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/services/api.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.065Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-dialog.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.066Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/clsx.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.067Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/class-variance-authority.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.070Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/tailwind-merge.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.072Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/index.css?t=1781104995804",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.074Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-slot.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.076Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/services/notifications.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.077Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/services/blobError.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.078Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/components/ui/dropdown-menu.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.079Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-ZTU6USJ5.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.081Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-UKU5TUXG.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.082Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-YL7KJSUD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.085Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-LEEJI6LQ.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.086Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-ZEMMCVHM.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.087Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-OFRK4GQ2.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.088Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-5WKXGTGS.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.090Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-7FKMC7BD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.091Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-QPTQ5UA7.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.091Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-BO76KZN6.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.092Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/config.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.093Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.094Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-SBMWLKCZ.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.096Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/axios.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.097Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-dropdown-menu.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.099Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-QICNLDQT.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.099Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-U5WHX2BK.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.100Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-5ZCUQH3G.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.100Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-WWFKPEY3.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.101Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-6ONLD4LD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.196Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/pages/QuizMagicEntry.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.242Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/components/ui/card.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.245Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/services/quiz.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.253Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/pages/QuizEngine.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.255Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/take-quiz",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.257Z",
+      "label": "candidate-assessment-link",
+      "failed": true,
+      "method": "GET",
+      "url": "http://127.0.0.1:3000/src/components/ui/progress.tsx",
+      "failure": "net::ERR_ABORTED",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz"
+    },
+    {
+      "at": "2026-06-10T15:23:16.266Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/@vite/client",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.267Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/main.tsx?t=1781104996246",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.270Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.270Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.271Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react-dom_client.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.272Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-T3S7KZ2J.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.272Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-UN725CXD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.273Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-ZNCNKMXC.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.275Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/@react-refresh",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.276Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/node_modules/vite/dist/client/env.mjs",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.438Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/App.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.440Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react-router-dom.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.440Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/lucide-react.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.449Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/context/ThemeContext.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.450Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/context/AuthContext.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.452Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/sonner.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.452Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/GlobalCommandPalette.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.453Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/layout/DashboardLayout.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.453Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/sonner.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.455Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/layout/CandidateLayout.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.458Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/alert-dialog.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.459Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-alert-dialog.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.460Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-ZTU6USJ5.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.461Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-UKU5TUXG.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.462Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-YL7KJSUD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.463Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-5WKXGTGS.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.464Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-LEEJI6LQ.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.465Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-OFRK4GQ2.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.466Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-ZEMMCVHM.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.466Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-7FKMC7BD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.467Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-QPTQ5UA7.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.468Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-BO76KZN6.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.469Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/tokenStore.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.469Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/lib/technicalAdmin.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.471Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/auth.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.473Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/dialog.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.474Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-dialog.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.475Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/input.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.477Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/badge.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.477Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/class-variance-authority.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.478Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/lib/utils.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.478Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.479Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/clsx.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.480Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/tailwind-merge.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.480Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/button.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.482Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/NotificationBell.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.483Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-slot.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.484Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-SBMWLKCZ.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.484Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/analytics.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.484Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/api.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.485Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/dropdown-menu.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.485Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/axios.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.486Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-dropdown-menu.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.486Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-QICNLDQT.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.487Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-U5WHX2BK.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.488Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-6ONLD4LD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.489Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-WWFKPEY3.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.489Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-5ZCUQH3G.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.628Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/notifications.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.634Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/blobError.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.635Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/config.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.640Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/index.css?t=1781104996246",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.689Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/pages/QuizMagicEntry.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.694Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/quiz.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.695Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/pages/QuizEngine.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.696Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/card.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.696Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/take-quiz",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.698Z",
+      "label": "candidate-assessment-link",
+      "failed": true,
+      "method": "GET",
+      "url": "http://127.0.0.1:3000/src/components/ui/progress.tsx",
+      "failure": "net::ERR_ABORTED",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz"
+    },
+    {
+      "at": "2026-06-10T15:23:16.701Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/@vite/client",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.703Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/main.tsx?t=1781104996701",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.704Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.704Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.705Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react-dom_client.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.706Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-T3S7KZ2J.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.709Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-UN725CXD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.710Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-ZNCNKMXC.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.851Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/@react-refresh",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.855Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/node_modules/vite/dist/client/env.mjs",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.856Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/App.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.858Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react-router-dom.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.859Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/lucide-react.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.862Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/context/ThemeContext.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.863Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/context/AuthContext.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.864Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/sonner.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.865Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/GlobalCommandPalette.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.866Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/sonner.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.871Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/layout/DashboardLayout.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.872Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/layout/CandidateLayout.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.873Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/alert-dialog.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.873Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/tokenStore.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.877Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/lib/technicalAdmin.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.878Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/index.css?t=1781104996701",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.879Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-alert-dialog.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.880Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/auth.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.880Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-ZTU6USJ5.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.881Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-UKU5TUXG.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.882Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-YL7KJSUD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.882Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-5WKXGTGS.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.883Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-LEEJI6LQ.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.884Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-OFRK4GQ2.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.885Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-ZEMMCVHM.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.886Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-7FKMC7BD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.887Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-QPTQ5UA7.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.887Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-BO76KZN6.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.888Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/dialog.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.889Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/input.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.890Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/badge.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.890Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/lib/utils.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.891Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-dialog.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.891Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/class-variance-authority.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.892Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/clsx.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.893Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/tailwind-merge.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.893Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.895Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/button.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.896Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/NotificationBell.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.897Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/analytics.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.898Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-slot.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.899Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-SBMWLKCZ.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.900Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/api.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.902Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/axios.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.903Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/dropdown-menu.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.904Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-dropdown-menu.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.904Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/notifications.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.905Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-QICNLDQT.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.906Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-U5WHX2BK.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.906Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-6ONLD4LD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.907Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-WWFKPEY3.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.908Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-5ZCUQH3G.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.908Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/blobError.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.909Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/config.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.912Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/pages/QuizMagicEntry.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.912Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/quiz.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.913Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/pages/QuizEngine.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.914Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/card.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.914Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/components/ui/progress.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.915Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-progress.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:16.963Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/take-quiz",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.091Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/@vite/client",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.093Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/@react-refresh",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.094Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/main.tsx?t=1781104996912",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.095Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.096Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.097Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react-dom_client.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.098Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-T3S7KZ2J.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.099Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-UN725CXD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.100Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-ZNCNKMXC.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.102Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/node_modules/vite/dist/client/env.mjs",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.103Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/App.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.105Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react-router-dom.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.106Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/lucide-react.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.108Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/context/ThemeContext.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.111Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/context/AuthContext.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.112Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/sonner.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.114Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/GlobalCommandPalette.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.115Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/layout/DashboardLayout.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.116Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/sonner.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.122Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/layout/CandidateLayout.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.124Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/alert-dialog.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.124Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/tokenStore.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.126Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/lib/technicalAdmin.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.127Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/auth.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.127Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-alert-dialog.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.128Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/dialog.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.129Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-ZTU6USJ5.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.130Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-UKU5TUXG.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.131Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-YL7KJSUD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.132Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-5WKXGTGS.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.133Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-LEEJI6LQ.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.133Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-OFRK4GQ2.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.134Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-ZEMMCVHM.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.134Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-7FKMC7BD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.135Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-QPTQ5UA7.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.136Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-BO76KZN6.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.136Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-dialog.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.253Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/input.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.257Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/badge.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.259Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/lib/utils.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.260Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/button.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.261Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/NotificationBell.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.262Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/class-variance-authority.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.262Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/clsx.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.263Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/tailwind-merge.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.264Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-slot.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.264Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.265Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-SBMWLKCZ.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.269Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/analytics.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.271Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/api.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.272Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/dropdown-menu.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.273Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/notifications.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.274Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/axios.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.275Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-dropdown-menu.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.276Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-QICNLDQT.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.277Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-U5WHX2BK.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.279Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-6ONLD4LD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.280Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-WWFKPEY3.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.281Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-5ZCUQH3G.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.286Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/blobError.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.287Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/config.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.288Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/index.css?t=1781104996912",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.312Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/pages/QuizMagicEntry.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.314Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/quiz.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.317Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/pages/QuizEngine.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.318Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/card.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.319Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/progress.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.320Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-progress.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.322Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/take-quiz",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.455Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/@vite/client",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.456Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/@react-refresh",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.459Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/main.tsx?t=1781104997323",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.461Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.462Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.463Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react-dom_client.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.464Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-T3S7KZ2J.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.465Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-UN725CXD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.466Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-ZNCNKMXC.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.470Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/node_modules/vite/dist/client/env.mjs",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.472Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/App.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.475Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/react-router-dom.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.476Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/lucide-react.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.478Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/context/ThemeContext.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.481Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/context/AuthContext.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.483Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/sonner.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.485Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/GlobalCommandPalette.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.486Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/layout/DashboardLayout.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.487Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/sonner.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.488Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/layout/CandidateLayout.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.492Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/alert-dialog.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.493Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/tokenStore.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.496Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/lib/technicalAdmin.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.498Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-alert-dialog.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.498Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-ZTU6USJ5.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.499Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-UKU5TUXG.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.500Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-YL7KJSUD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.501Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-5WKXGTGS.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.502Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-LEEJI6LQ.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.503Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-OFRK4GQ2.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.503Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-ZEMMCVHM.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.504Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-7FKMC7BD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.505Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-QPTQ5UA7.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.505Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-BO76KZN6.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.506Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/auth.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.636Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/dialog.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.638Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-dialog.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.639Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/input.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.640Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/badge.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.641Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/class-variance-authority.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.643Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.644Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/lib/utils.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.646Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/clsx.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.647Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/tailwind-merge.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.648Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/button.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.650Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-slot.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.651Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-SBMWLKCZ.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.654Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/NotificationBell.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.658Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/analytics.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.660Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/api.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.663Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/axios.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.664Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/dropdown-menu.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.666Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-dropdown-menu.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.667Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/notifications.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.669Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-QICNLDQT.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.673Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-U5WHX2BK.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.674Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-6ONLD4LD.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.675Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-WWFKPEY3.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.677Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/chunk-5ZCUQH3G.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.679Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/blobError.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.680Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/config.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.682Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/src/index.css?t=1781104997323",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.713Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/pages/QuizMagicEntry.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.719Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/services/quiz.ts",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.721Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/pages/QuizEngine.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.723Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/card.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.728Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 304,
+      "url": "http://127.0.0.1:3000/src/components/ui/progress.tsx",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.730Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/node_modules/.vite/deps/@radix-ui_react-progress.js?v=5de83786",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    },
+    {
+      "at": "2026-06-10T15:23:17.732Z",
+      "label": "candidate-assessment-link",
+      "method": "GET",
+      "status": 200,
+      "url": "http://127.0.0.1:3000/take-quiz",
+      "pageUrl": "http://127.0.0.1:3000/take-quiz",
+      "responsePayload": ""
+    }
+  ],
+  "console": [
+    {
+      "at": "2026-06-10T15:23:16.039Z",
+      "label": "candidate-assessment-link",
+      "type": "debug",
+      "text": "[vite] connecting...",
+      "url": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg"
+    },
+    {
+      "at": "2026-06-10T15:23:16.054Z",
+      "label": "candidate-assessment-link",
+      "type": "debug",
+      "text": "[vite] connected.",
+      "url": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg"
+    },
+    {
+      "at": "2026-06-10T15:23:16.120Z",
+      "label": "candidate-assessment-link",
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "url": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg"
+    },
+    {
+      "at": "2026-06-10T15:23:16.277Z",
+      "label": "candidate-assessment-link",
+      "type": "debug",
+      "text": "[vite] connecting...",
+      "url": "http://127.0.0.1:3000/take-quiz"
+    },
+    {
+      "at": "2026-06-10T15:23:16.446Z",
+      "label": "candidate-assessment-link",
+      "type": "debug",
+      "text": "[vite] connected.",
+      "url": "http://127.0.0.1:3000/take-quiz"
+    },
+    {
+      "at": "2026-06-10T15:23:16.643Z",
+      "label": "candidate-assessment-link",
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "url": "http://127.0.0.1:3000/take-quiz"
+    },
+    {
+      "at": "2026-06-10T15:23:16.860Z",
+      "label": "candidate-assessment-link",
+      "type": "debug",
+      "text": "[vite] connecting...",
+      "url": "http://127.0.0.1:3000/take-quiz"
+    },
+    {
+      "at": "2026-06-10T15:23:16.878Z",
+      "label": "candidate-assessment-link",
+      "type": "debug",
+      "text": "[vite] connected.",
+      "url": "http://127.0.0.1:3000/take-quiz"
+    },
+    {
+      "at": "2026-06-10T15:23:16.910Z",
+      "label": "candidate-assessment-link",
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "url": "http://127.0.0.1:3000/take-quiz"
+    },
+    {
+      "at": "2026-06-10T15:23:17.104Z",
+      "label": "candidate-assessment-link",
+      "type": "debug",
+      "text": "[vite] connecting...",
+      "url": "http://127.0.0.1:3000/take-quiz"
+    },
+    {
+      "at": "2026-06-10T15:23:17.110Z",
+      "label": "candidate-assessment-link",
+      "type": "debug",
+      "text": "[vite] connected.",
+      "url": "http://127.0.0.1:3000/take-quiz"
+    },
+    {
+      "at": "2026-06-10T15:23:17.290Z",
+      "label": "candidate-assessment-link",
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "url": "http://127.0.0.1:3000/take-quiz"
+    },
+    {
+      "at": "2026-06-10T15:23:17.474Z",
+      "label": "candidate-assessment-link",
+      "type": "debug",
+      "text": "[vite] connecting...",
+      "url": "http://127.0.0.1:3000/take-quiz"
+    },
+    {
+      "at": "2026-06-10T15:23:17.480Z",
+      "label": "candidate-assessment-link",
+      "type": "debug",
+      "text": "[vite] connected.",
+      "url": "http://127.0.0.1:3000/take-quiz"
+    },
+    {
+      "at": "2026-06-10T15:23:17.683Z",
+      "label": "candidate-assessment-link",
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "url": "http://127.0.0.1:3000/take-quiz"
+    }
+  ],
+  "screenshots": [
+    "D:\\Shubham\\HR APP\\HR APP FRONTEND\\assessment-link-fix-2026-06-10T15-22-56-909Z\\01-open-generated-link.png"
+  ],
+  "state": {
+    "job": {
+      "id": "7e68ff3f-a9e2-4514-8541-43ab981d734f",
+      "title": "Assessment Fix Role 1781104980638",
+      "role": "QA Automation Engineer",
+      "location": "Remote",
+      "employment_type": "Full-time",
+      "experience_min": 1,
+      "experience_max": 5,
+      "must_have_skills": [
+        "Playwright",
+        "React",
+        "FastAPI",
+        "QA"
+      ],
+      "good_to_have_skills": [
+        "SQL",
+        "Accessibility"
+      ],
+      "description": "Assessment workflow validation job with enough real description for scoring and quiz generation.",
+      "salary_range": null,
+      "education_requirement": null,
+      "resume_weight": 50,
+      "quiz_weight": 50,
+      "pass_threshold": 60,
+      "is_active": true,
+      "created_at": "2026-06-10T15:23:01.542257"
+    },
+    "quiz": {
+      "id": "73204575-e280-4fde-b036-2e37520fd693",
+      "job_id": "7e68ff3f-a9e2-4514-8541-43ab981d734f",
+      "title": "Assessment Fix Role 1781104980638 - Assessment",
+      "duration_minutes": 30,
+      "is_active": true,
+      "question_count": 20,
+      "created_at": "2026-06-10T15:23:14.073797"
+    },
+    "candidate": {
+      "candidate_tier": "senior",
+      "experience_years": 5,
+      "id": "34a9fe88-a54d-4018-9db5-1196555d8a66",
+      "job_id": "7e68ff3f-a9e2-4514-8541-43ab981d734f",
+      "user_id": "c3ad5683-0cb9-47a4-bd47-3dbe239a4db5",
+      "name": "Candidate: Browser Test User",
+      "email": "[email-redacted]",
+      "phone": null,
+      "location": "Automation",
+      "skills": [
+        "accessibility",
+        "playwright",
+        "typescript",
+        "fastapi",
+        "python",
+        "react",
+        "azure",
+        "sql",
+        "qa"
+      ],
+      "normalized_skills": [
+        "accessibility",
+        "azure",
+        "fastapi",
+        "playwright",
+        "python",
+        "qa",
+        "react",
+        "sql",
+        "typescript"
+      ],
+      "education": [],
+      "projects": [],
+      "work_experience": [],
+      "skill_years": {
+        "accessibility": 5,
+        "azure": 5,
+        "fastapi": 5,
+        "playwright": 5,
+        "python": 5,
+        "qa": 5,
+        "react": 5,
+        "sql": 5,
+        "typescript": 5
+      },
+      "skill_match_pct": 100,
+      "experience_match_pct": 100,
+      "project_relevance_pct": 40,
+      "education_match_pct": 60.5,
+      "location_match_pct": 100,
+      "vector_similarity": 0,
+      "resume_score": 58.44,
+      "score_breakdown": {
+        "ai_score_used": false,
+        "ai_skill_score": null,
+        "ai_experience_score": null,
+        "ai_project_score": null,
+        "matched_must_have": [],
+        "missing_must_have": [],
+        "matched_good_to_have": [],
+        "missing_good_to_have": [],
+        "reasoning": "",
+        "domain_fit": "exact",
+        "seniority_match": "exact",
+        "hire_recommendation": "maybe",
+        "red_flags": [],
+        "standout_factors": [],
+        "confidence": "medium",
+        "rule_based": {
+          "skill_pct": 100,
+          "exp_pct": 100,
+          "proj_pct": 40
+        },
+        "candidate_tier": "senior",
+        "from_cache": false,
+        "fast_mode": true,
+        "degraded_mode": false,
+        "ocr_truncated": false,
+        "phase_b_calibration": {
+          "role_track": "backend",
+          "jd_signal_strength": 0.4732,
+          "bias_points": -2.5,
+          "base_weights": {
+            "skill": 0.3525,
+            "experience": 0.2522,
+            "project": 0.1603,
+            "education": 0.0722,
+            "location": 0.0441,
+            "vector": 0.1187
+          },
+          "calibrated_weights": {
+            "skill": 0.3714,
+            "experience": 0.2664,
+            "project": 0.1698,
+            "education": 0.058,
+            "location": 0.0299,
+            "vector": 0.1046
+          }
+        },
+        "phase_c_applied": true,
+        "jd_hash": "8072c21792bf5252"
+      },
+      "career_breaks": [],
+      "tag": "Medium",
+      "quiz_score": null,
+      "quiz_max": null,
+      "quiz_pct": null,
+      "final_score": 58.44,
+      "rank": null,
+      "passed": null,
+      "created_at": "2026-06-10T15:23:14.465878"
+    },
+    "sendLinks": {
+      "message": "Quiz links queued for dispatch to 1 candidates",
+      "links": [
+        {
+          "name": "Candidate: Browser Test User",
+          "email": "[email-redacted]",
+          "link": "http://127.0.0.1:3000/take-quiz?token=DP4321DXK-zSqCA4V0NT7iqBBG6xYwLq8597Ba4PaTg",
+          "state": "rotated"
+        }
+      ],
+      "created_count": 0,
+      "rotated_count": 1,
+      "skipped": []
+    },
+    "contextWithoutToken": null,
+    "contextAfterDashboardRefresh": {
+      "status": 200,
+      "body": "{\"quiz_title\":\"Assessment Fix Role 1781104980638 - Assessment\",\"job_title\":\"Assessment Fix Role 1781104980638\",\"has_existing_account\":true,\"status\":\"pending\"}"
+    }
+  },
+  "failures": [
+    {
+      "at": "2026-06-10T15:23:18.686Z",
+      "error": "Error: No answer/next/submit control found on http://127.0.0.1:3000/take-quiz: ",
+      "stack": "Error: No answer/next/submit control found on http://127.0.0.1:3000/take-quiz: \n    at completeAssessment (D:\\Shubham\\HR APP\\scratch\\assessment_link_fix_validation.cjs:208:13)\n    at async D:\\Shubham\\HR APP\\scratch\\assessment_link_fix_validation.cjs:300:5"
+    }
+  ],
+  "finishedAt": "2026-06-10T15:23:18.686Z"
+}

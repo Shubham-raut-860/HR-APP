@@ -1,0 +1,198 @@
+{
+  "summary": {
+    "count_profiles": 10,
+    "score_range_direct": [
+      36.75,
+      88.27
+    ],
+    "score_range_override_fallback": [
+      19.17,
+      88.27
+    ],
+    "score_range_override_ai": [
+      25.72,
+      88.27
+    ],
+    "pairwise_agreement_direct_vs_override_fallback_pct": 97.78,
+    "pairwise_agreement_direct_vs_override_ai_pct": 97.78,
+    "mean_shift_fallback_minus_direct": -7.62,
+    "mean_shift_ai_minus_direct": -5.62,
+    "semantic_influence_example_delta": 8.5,
+    "penalty_table": {
+      "0": 1.0,
+      "1": 0.9,
+      "2": 0.8,
+      "3": 0.7,
+      "4": 0.7,
+      "5": 0.7
+    },
+    "rank_direct": [
+      "A_strong_match",
+      "F_senior_overqualified",
+      "H_low_vector_high_skills",
+      "B_missing_one_must",
+      "E_fresher_good_skills",
+      "G_mid_partial",
+      "J_borderline",
+      "C_missing_two_must",
+      "I_high_vector_low_skills",
+      "D_no_must"
+    ],
+    "rank_override_fallback": [
+      "A_strong_match",
+      "F_senior_overqualified",
+      "H_low_vector_high_skills",
+      "E_fresher_good_skills",
+      "B_missing_one_must",
+      "G_mid_partial",
+      "J_borderline",
+      "C_missing_two_must",
+      "I_high_vector_low_skills",
+      "D_no_must"
+    ],
+    "rank_override_ai": [
+      "A_strong_match",
+      "F_senior_overqualified",
+      "H_low_vector_high_skills",
+      "E_fresher_good_skills",
+      "B_missing_one_must",
+      "G_mid_partial",
+      "J_borderline",
+      "C_missing_two_must",
+      "I_high_vector_low_skills",
+      "D_no_must"
+    ]
+  },
+  "rows": [
+    {
+      "name": "A_strong_match",
+      "skill": 90.0,
+      "exp": 100.0,
+      "proj": 70.0,
+      "edu": 75.0,
+      "loc": 100.0,
+      "vec": 0.92,
+      "missing_must_have": 0,
+      "direct": 88.27,
+      "override_fallback": 88.27,
+      "override_ai": 88.27
+    },
+    {
+      "name": "B_missing_one_must",
+      "skill": 56.67,
+      "exp": 100.0,
+      "proj": 46.67,
+      "edu": 75.0,
+      "loc": 100.0,
+      "vec": 0.81,
+      "missing_must_have": 1,
+      "direct": 70.65,
+      "override_fallback": 63.59,
+      "override_ai": 63.59
+    },
+    {
+      "name": "C_missing_two_must",
+      "skill": 43.33,
+      "exp": 100.0,
+      "proj": 23.33,
+      "edu": 75.0,
+      "loc": 100.0,
+      "vec": 0.75,
+      "missing_must_have": 2,
+      "direct": 61.05,
+      "override_fallback": 41.64,
+      "override_ai": 48.84
+    },
+    {
+      "name": "D_no_must",
+      "skill": 0.0,
+      "exp": 100.0,
+      "proj": 0.0,
+      "edu": 55.0,
+      "loc": 100.0,
+      "vec": 0.4,
+      "missing_must_have": 3,
+      "direct": 36.75,
+      "override_fallback": 19.17,
+      "override_ai": 25.72
+    },
+    {
+      "name": "E_fresher_good_skills",
+      "skill": 70.0,
+      "exp": 83.2,
+      "proj": 46.67,
+      "edu": 66.5,
+      "loc": 100.0,
+      "vec": 0.72,
+      "missing_must_have": 0,
+      "direct": 66.57,
+      "override_fallback": 66.57,
+      "override_ai": 66.57
+    },
+    {
+      "name": "F_senior_overqualified",
+      "skill": 100.0,
+      "exp": 82.0,
+      "proj": 56.67,
+      "edu": 82.5,
+      "loc": 100.0,
+      "vec": 0.9,
+      "missing_must_have": 0,
+      "direct": 86.88,
+      "override_fallback": 86.88,
+      "override_ai": 86.88
+    },
+    {
+      "name": "G_mid_partial",
+      "skill": 56.67,
+      "exp": 100.0,
+      "proj": 33.33,
+      "edu": 55.0,
+      "loc": 100.0,
+      "vec": 0.68,
+      "missing_must_have": 1,
+      "direct": 63.46,
+      "override_fallback": 57.11,
+      "override_ai": 57.11
+    },
+    {
+      "name": "H_low_vector_high_skills",
+      "skill": 80.0,
+      "exp": 100.0,
+      "proj": 46.67,
+      "edu": 75.0,
+      "loc": 100.0,
+      "vec": 0.1,
+      "missing_must_have": 0,
+      "direct": 71.94,
+      "override_fallback": 71.94,
+      "override_ai": 71.94
+    },
+    {
+      "name": "I_high_vector_low_skills",
+      "skill": 0.0,
+      "exp": 100.0,
+      "proj": 0.0,
+      "edu": 82.5,
+      "loc": 100.0,
+      "vec": 0.95,
+      "missing_must_have": 3,
+      "direct": 43.92,
+      "override_fallback": 24.44,
+      "override_ai": 30.74
+    },
+    {
+      "name": "J_borderline",
+      "skill": 56.67,
+      "exp": 97.6,
+      "proj": 46.67,
+      "edu": 55.0,
+      "loc": 100.0,
+      "vec": 0.63,
+      "missing_must_have": 1,
+      "direct": 63.17,
+      "override_fallback": 56.85,
+      "override_ai": 56.85
+    }
+  ]
+}

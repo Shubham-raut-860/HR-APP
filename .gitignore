@@ -1,0 +1,46 @@
+﻿# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+.venv/
+.venv_run/
+venv/
+env/
+
+# ── Node.js ───────────────────────────────────────────────────
+node_modules/
+.next/
+out/
+dist/
+build/
+
+# ── Secrets & Environment ────────────────────────────────────
+.env
+.env.local
+.env.production
+run.txt
+
+# ── Databases ────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── OS & IDE ─────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Uploads & Runtime ────────────────────────────────────────
+uploads/
+a2a_state/
+mlruns/
+
+# ── Build Artifacts ──────────────────────────────────────────
+*.zip

@@ -1,0 +1,11 @@
+{
+  "resetVerifyRequestCountOnPage": 1,
+  "network": [
+    {
+      "url": "http://127.0.0.1:8000/auth/reset-password/verify",
+      "method": "POST",
+      "status": 400
+    }
+  ],
+  "finalUrl": "http://127.0.0.1:3000/reset-password/fake-token"
+}
