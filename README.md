@@ -45,6 +45,10 @@ Or just `docker compose up --build` for the full stack.
 
 Fill in `.env` — needs Azure OpenAI keys and a Postgres connection string. See `.env.example` for every variable.
 
+## Data handling
+
+This repository intentionally contains no candidate resumes, uploads, evaluation exports, or production-like data. Those files are ignored at the root; test coverage should use synthetic fixtures generated at test time. That keeps the project safe to clone, review, and share without treating applicant data as sample code.
+
 ## Author
 
 Shubham Raut — [github.com/Shubham-raut-860](https://github.com/Shubham-raut-860)

@@ -48,3 +48,13 @@ mlruns/
 
 # ── Build Artifacts ──────────────────────────────────────────
 *.zip
+
+# Candidate data and evaluation outputs
+# Keep resumes, uploads, benchmark runs, and generated reports out of Git.
+# Tests should create synthetic fixtures at runtime instead.
+/HR APP BACKEND/uploads/
+/HR APP BACKEND/test_docs/
+/HR APP BACKEND/audit_artifacts/
+/HR APP BACKEND/scratch/
+/HR APP BACKEND/*resume*.pdf
+/HR APP BACKEND/*resume*.docx
